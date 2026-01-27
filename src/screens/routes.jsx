@@ -76,7 +76,7 @@ export const roleBasedRoutes = {
     {
       name: "Bot",
       icon: <MessagesSquare size={20} />,
-      path: "/bot",
+      path: "/bot/:chatId?",
       component: UserBot,
       allowedRoles: ["user"],
     },

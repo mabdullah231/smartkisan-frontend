@@ -2,40 +2,32 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { Plus, Mic, ArrowRight, Bot, User, ChevronDown, MessageSquare, X } from "lucide-react";
 import Helpers from "../../../config/Helpers";
 import { DarkModeContext } from "../../DashboardLayout";
+import axios from "axios";
+import { useNavigate, useParams } from "react-router-dom";
+
 
 const UserBot = () => {
+  const { chatId: paramChatId } = useParams();
   const authUser = Helpers.getAuthUser();
   const darkMode = useContext(DarkModeContext);
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      text: "Hello! I'm your AI assistant. How can I help you today?",
-      sender: "bot",
-      timestamp: new Date().toISOString()
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
+  const [recentChats, setRecentChats] = useState([]);
+  const [chatId, setChatId] = useState(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [showRecentChats, setShowRecentChats] = useState(false);
   const messagesEndRef = useRef(null);
+  const messagesEndRefMobile = useRef(null);
+  const navigate = useNavigate();
   const chatContainerRef = useRef(null);
+  const chatContainerRefMobile = useRef(null);
   const recentChatsRef = useRef(null);
 
-  // Minimal recent chats data
-  const recentChats = [
-    "Crop Rotation Advice",
-    "Weather Forecast",
-    "Soil Nutrients",
-    "Pest Control",
-    "Irrigation System",
-  ];
-
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!message.trim()) return;
 
-    // Add user message
     const userMessage = {
-      id: messages.length + 1,
+      id: Date.now(),
       text: message,
       sender: "user",
       timestamp: new Date().toISOString()
@@ -44,52 +36,102 @@ const UserBot = () => {
     setMessages(prev => [...prev, userMessage]);
     setMessage("");
 
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponses = [
-        "I understand. Let me help you with that.",
-        "Thanks for your question. Here's what I found...",
-        "That's a good point. Based on my knowledge...",
-        "Let me provide you with some information about that.",
-        "I've analyzed your query and here are the details..."
-      ];
+    try {
+      let response;
 
-      const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)];
+      if (!chatId) {
+        response = await axios.post(
+          `${Helpers.apiUrl}chat`,
+          { question: userMessage.text },
+          Helpers.getAuthHeaders()
+        );
+
+        const newChatId = response.data.chat_id;
+        setChatId(newChatId);
+        navigate(`/user/bot/${newChatId}`);
+        await getRecentChats();
+      } else {
+        response = await axios.post(
+          `${Helpers.apiUrl}chat/${chatId}`,
+          { question: userMessage.text },
+          Helpers.getAuthHeaders()
+        );
+      }
 
       const botMessage = {
-        id: messages.length + 2,
-        text: randomResponse,
+        id: Date.now() + 1,
+        text: response.data.answer,
         sender: "bot",
         timestamp: new Date().toISOString()
       };
 
       setMessages(prev => [...prev, botMessage]);
-    }, 800);
+
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+        if (messagesEndRefMobile.current) {
+          messagesEndRefMobile.current.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
+
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    if (paramChatId) {
+      loadChatById(paramChatId);
+    }
+  }, [paramChatId]);
+
+  const loadChatById = async (id) => {
+    try {
+      const response = await axios.get(`${Helpers.apiUrl}chat/${id}`, Helpers.getAuthHeaders());
+      if (response.data.success) {
+        const fullMessages = [];
+        response.data.chat.forEach(msg => {
+          if (msg.question) fullMessages.push({ id: msg.id + '-q', text: msg.question, sender: 'user' });
+          if (msg.answer) fullMessages.push({ id: msg.id + '-a', text: msg.answer, sender: 'bot' });
+        });
+
+        setMessages(fullMessages);
+        setChatId(id);
+        setTimeout(() => scrollToBottom(), 100);
+      }
+    } catch (err) {
+      console.error("Failed to load chat:", err);
+      Helpers.toast("error", "Failed to load chat");
+    }
   };
 
   const handleNewChat = () => {
-    setMessages([{
-      id: 1,
-      text: "Hello! I'm your AI assistant. How can I help you today?",
-      sender: "bot",
-      timestamp: new Date().toISOString()
-    }]);
+    setMessages([]);
+    setChatId(null);
+    navigate(`/user/bot`);
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+    if (messagesEndRefMobile.current) {
+      messagesEndRefMobile.current.scrollIntoView({ behavior: "smooth" });
+    }
     setShowScrollToBottom(false);
   };
 
   const handleScroll = () => {
-    if (chatContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-      const isScrolledUp = scrollHeight - scrollTop - clientHeight > 100;
-      setShowScrollToBottom(isScrolledUp);
+    const container = chatContainerRef.current || chatContainerRefMobile.current;
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollToBottom(!isNearBottom);
     }
   };
 
-  // Close recent chats when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (recentChatsRef.current && !recentChatsRef.current.contains(event.target)) {
@@ -107,15 +149,63 @@ const UserBot = () => {
   }, [showRecentChats]);
 
   useEffect(() => {
-    scrollToBottom();
+    const container = chatContainerRef.current || chatContainerRefMobile.current;
+    if (container && messages.length > 0) {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+
+      if (isNearBottom) {
+        requestAnimationFrame(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          }
+          if (messagesEndRefMobile.current) {
+            messagesEndRefMobile.current.scrollIntoView({ behavior: "smooth" });
+          }
+        });
+      }
+    }
   }, [messages]);
 
-  useEffect(() => {
-    const container = chatContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+  const getRecentChats = async () => {
+    try {
+      const response = await axios.get(
+        `${Helpers.apiUrl}chats`,
+        Helpers.getAuthHeaders()
+      );
+      setRecentChats(response.data.chats);
+    } catch (error) {
+      console.log("Error Fetching Recent Chats", error)
+      Helpers.toast("error", "Couldn't Fetch Recent Chats")
     }
+  }
+
+  useEffect(() => {
+    getRecentChats();
+  }, []);
+
+  useEffect(() => {
+    const desktopContainer = chatContainerRef.current;
+    const mobileContainer = chatContainerRefMobile.current;
+
+    if (desktopContainer) {
+      desktopContainer.addEventListener('scroll', handleScroll);
+      handleScroll();
+    }
+
+    if (mobileContainer) {
+      mobileContainer.addEventListener('scroll', handleScroll);
+      handleScroll();
+    }
+
+    return () => {
+      if (desktopContainer) {
+        desktopContainer.removeEventListener('scroll', handleScroll);
+      }
+      if (mobileContainer) {
+        mobileContainer.removeEventListener('scroll', handleScroll);
+      }
+    };
   }, []);
 
   return (
@@ -166,7 +256,6 @@ const UserBot = () => {
           transition: box-shadow 0.3s ease;
         }
 
-        /* Hide scrollbar but keep functionality */
         .hide-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
@@ -176,35 +265,31 @@ const UserBot = () => {
           display: none;
         }
       `}</style>
-      
+
       <div className="relative min-h-[calc(100vh-75px)] md:min-h-[calc(100vh-100px)] sm:min-h-[calc(100vh-100px)] flex grow">
-        
-        {/* Mobile Recent Chats Toggle Button */}
+
         <div className="lg:hidden absolute top-4 left-4 z-20">
           <button
             onClick={() => setShowRecentChats(!showRecentChats)}
             className={`p-2 rounded-lg shadow-sm transition-all duration-300 ${darkMode
-                ? 'bg-gray-800 hover:bg-gray-700 text-gray-300'
-                : 'bg-white hover:bg-gray-50 text-gray-600'
+              ? 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+              : 'bg-white hover:bg-gray-50 text-gray-600'
               }`}
           >
             <MessageSquare size={20} />
           </button>
         </div>
 
-        {/* Single Unified Card - Desktop */}
         <div className="hidden lg:block w-full">
           <div className={`h-full rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 shadow-transition overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex h-full">
-              {/* Recent Chats Sidebar - 2 cols with separator */}
               <div className={`w-2/12 p-4 border-r ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50/50'}`}>
-                {/* Recent Chats Header */}
                 <div className="mb-4">
                   <button
                     onClick={handleNewChat}
                     className={`w-full py-2 px-4 rounded-2xl text-sm font-medium transition-all duration-200 ${darkMode
-                        ? 'bg-green-700 hover:bg-green-600 text-gray-200'
-                        : 'bg-green-600 hover:bg-green-500 text-white'
+                      ? 'bg-green-700 hover:bg-green-600 text-gray-200'
+                      : 'bg-green-600 hover:bg-green-500 text-white'
                       }`}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -217,42 +302,48 @@ const UserBot = () => {
                   Recent chats
                 </h2>
 
-                {/* Recent Chats List */}
                 <div className="space-y-2">
-                  {recentChats.map((chat, index) => (
+                  {recentChats.map((chat) => (
                     <button
-                      key={index}
-                      className={`w-full text-left py-2 px-3 rounded-lg transition-all duration-200 ${darkMode
-                          ? 'hover:bg-gray-700 text-gray-300'
-                          : 'hover:bg-gray-100 text-gray-700'
+                      key={chat.id}
+                      className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
+                        ? "hover:bg-gray-700 text-gray-300"
+                        : "hover:bg-gray-100 text-gray-700"
                         }`}
                       onClick={() => {
-                        console.log('Loading chat:', chat);
+                        navigate(`/user/bot/${chat.id}`);
+                        loadChatById(chat.id);
                       }}
                     >
-                      <span className="text-sm truncate block">{chat}</span>
+                      <span className="text-sm truncate block">
+                        {chat.chat_name || "New Chat"}
+                      </span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Main Chat Area - 10 cols */}
               <div className="w-10/12 relative">
                 <div className="h-full px-3 w-full relative">
-                  {/* Chat Messages Container */}
                   <div
                     ref={chatContainerRef}
-                    className="flex-grow px-4 pt-16 pb-20 overflow-y-auto max-h-[calc(100vh-200px)] hide-scrollbar"
+                    className="flex-grow px-4 pt-16 pb-20 overflow-y-auto max-h-[calc(100vh-150px)] hide-scrollbar"
                     onScroll={handleScroll}
                   >
                     <div className="space-y-4 mx-auto">
+                      {messages.length === 0 && (
+                        <div className="h-full flex items-center justify-center">
+                          <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Start by asking something
+                          </p>
+                        </div>
+                      )}
                       {messages.map((msg, index) => (
                         <div
                           key={msg.id}
                           className={`flex items-start gap-2 animate-fade-in ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                          style={{alignItems: 'center'}}
+                          style={{ alignItems: 'center' }}
                         >
-                          {/* Bot Avatar */}
                           {msg.sender === 'bot' && (
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-green-900' : 'bg-green-100'
                               }`}>
@@ -260,19 +351,17 @@ const UserBot = () => {
                             </div>
                           )}
 
-                          {/* Message Bubble */}
                           <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                              ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                              : darkMode
-                                ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                                : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                            ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                            : darkMode
+                              ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                              : 'bg-gray-100 text-gray-800 rounded-bl-none'
                             }`}>
                             <p className="text-sm leading-relaxed">
                               {msg.text}
                             </p>
                           </div>
 
-                          {/* User Avatar */}
                           {msg.sender === 'user' && (
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-blue-900' : 'bg-blue-100'
                               }`}>
@@ -285,13 +374,12 @@ const UserBot = () => {
                     </div>
                   </div>
 
-                  {/* Scroll to Bottom Button */}
                   {showScrollToBottom && (
                     <button
                       onClick={scrollToBottom}
                       className={`fixed bottom-28 md:bottom-24 right-4 md:right-6 p-2 md:p-3 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-50 ${darkMode
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                          : 'bg-green-500 hover:bg-green-600 text-white'
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-green-500 hover:bg-green-600 text-white'
                         }`}
                       aria-label="Scroll to bottom"
                     >
@@ -299,17 +387,14 @@ const UserBot = () => {
                     </button>
                   )}
 
-                  {/* Chatbot Interface - Fixed at bottom */}
                   <div className="absolute bottom-3 z-50 left-0 right-0 px-2 sm:px-4">
                     <div className="max-w-4xl mx-auto relative">
-                      {/* Background overlay */}
                       <div className={`absolute inset-0 rounded-3xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} />
 
                       <div className={`w-full rounded-3xl px-3 py-2 flex items-center gap-3 shadow-lg transition-all duration-300 relative ${darkMode
-                          ? 'border border-gray-700'
-                          : 'border border-gray-300'
+                        ? 'border border-gray-700'
+                        : 'border border-gray-300'
                         }`}>
-                        {/* Left Side - Action Buttons */}
                         <div className="flex items-center gap-2 relative z-10">
                           <button
                             className="p-1.5 transition-all duration-200 text-green-600 hover:text-green-700 transform hover:scale-110"
@@ -325,29 +410,27 @@ const UserBot = () => {
                           </button>
                         </div>
 
-                        {/* Text Input Area */}
                         <input
                           type="text"
                           value={message}
                           onChange={(e) => setMessage(e.target.value)}
                           placeholder="Ask me anything..."
                           className={`flex-1 px-3 py-1.5 rounded-xl border-0 outline-none text-sm transition-all duration-300 transform relative z-10 ${darkMode
-                              ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
-                              : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
+                            ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
+                            : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
                             }`}
-                          onKeyPress={(e) => {
+                          onKeyDown={(e) => {
                             if (e.key === 'Enter' && message.trim()) {
                               handleSendMessage();
                             }
                           }}
                         />
 
-                        {/* Right Side - Send Button */}
                         <button
                           onClick={handleSendMessage}
                           className={`p-1.5 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95 relative z-10 ${message.trim()
-                              ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                              : 'bg-green-600 text-white opacity-50 cursor-not-allowed'
+                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
+                            : 'bg-green-600 text-white opacity-50 cursor-not-allowed'
                             }`}
                           disabled={!message.trim()}
                           aria-label="Send message"
@@ -363,24 +446,28 @@ const UserBot = () => {
           </div>
         </div>
 
-        {/* Mobile View - Separate Card */}
         <div className="lg:hidden w-full">
           <div className={`rounded-2xl px-3 w-full h-full shadow-sm hover:shadow-md transition-all duration-300 transform shadow-transition relative ${darkMode ? 'bg-gray-800' : 'bg-white'
             }`}>
-            {/* Chat Messages Container */}
             <div
-              ref={chatContainerRef}
+              ref={chatContainerRefMobile}
               className="flex-grow px-4 pt-16 pb-20 overflow-y-auto max-h-[calc(100vh-200px)] hide-scrollbar"
               onScroll={handleScroll}
             >
               <div className="space-y-4 mx-auto">
+                {messages.length === 0 && (
+                  <div className="h-full flex items-center justify-center">
+                    <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Start by asking something
+                    </p>
+                  </div>
+                )}
                 {messages.map((msg, index) => (
                   <div
                     key={msg.id}
                     className={`flex items-start gap-2 animate-fade-in ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                    style={{alignItems: 'center'}}
+                    style={{ alignItems: 'center' }}
                   >
-                    {/* Bot Avatar */}
                     {msg.sender === 'bot' && (
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-green-900' : 'bg-green-100'
                         }`}>
@@ -388,19 +475,17 @@ const UserBot = () => {
                       </div>
                     )}
 
-                    {/* Message Bubble */}
                     <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                        ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                        : darkMode
-                          ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                          : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                      ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                      : darkMode
+                        ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                        : 'bg-gray-100 text-gray-800 rounded-bl-none'
                       }`}>
                       <p className="text-sm leading-relaxed">
                         {msg.text}
                       </p>
                     </div>
 
-                    {/* User Avatar */}
                     {msg.sender === 'user' && (
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-blue-900' : 'bg-blue-100'
                         }`}>
@@ -409,17 +494,16 @@ const UserBot = () => {
                     )}
                   </div>
                 ))}
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRefMobile} />
               </div>
             </div>
 
-            {/* Scroll to Bottom Button */}
             {showScrollToBottom && (
               <button
                 onClick={scrollToBottom}
                 className={`fixed bottom-28 md:bottom-24 right-4 md:right-6 p-2 md:p-3 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-50 ${darkMode
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-green-500 hover:bg-green-600 text-white'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-green-500 hover:bg-green-600 text-white'
                   }`}
                 aria-label="Scroll to bottom"
               >
@@ -427,17 +511,14 @@ const UserBot = () => {
               </button>
             )}
 
-            {/* Chatbot Interface - Fixed at bottom */}
             <div className="absolute bottom-3 z-50 left-0 right-0 px-2 sm:px-4">
               <div className="max-w-4xl mx-auto relative">
-                {/* Background overlay */}
                 <div className={`absolute inset-0 rounded-3xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} />
 
                 <div className={`w-full rounded-3xl px-3 py-2 flex items-center gap-3 shadow-lg transition-all duration-300 relative ${darkMode
-                    ? 'border border-gray-700'
-                    : 'border border-gray-300'
+                  ? 'border border-gray-700'
+                  : 'border border-gray-300'
                   }`}>
-                  {/* Left Side - Action Buttons */}
                   <div className="flex items-center gap-2 relative z-10">
                     <button
                       className="p-1.5 transition-all duration-200 text-green-600 hover:text-green-700 transform hover:scale-110"
@@ -453,29 +534,27 @@ const UserBot = () => {
                     </button>
                   </div>
 
-                  {/* Text Input Area */}
                   <input
                     type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Ask me anything..."
                     className={`flex-1 px-3 py-1.5 rounded-xl border-0 outline-none text-sm transition-all duration-300 transform relative z-10 ${darkMode
-                        ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
-                        : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
+                      ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
+                      : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
                       }`}
-                    onKeyPress={(e) => {
+                    onKeyDown={(e) => {
                       if (e.key === 'Enter' && message.trim()) {
                         handleSendMessage();
                       }
                     }}
                   />
 
-                  {/* Right Side - Send Button */}
                   <button
                     onClick={handleSendMessage}
                     className={`p-1.5 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95 relative z-10 ${message.trim()
-                        ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                        : 'bg-green-600 text-white opacity-50 cursor-not-allowed'
+                      ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
+                      : 'bg-green-600 text-white opacity-50 cursor-not-allowed'
                       }`}
                     disabled={!message.trim()}
                     aria-label="Send message"
@@ -488,26 +567,24 @@ const UserBot = () => {
           </div>
         </div>
 
-        {/* Mobile Recent Chats Sidebar */}
         {showRecentChats && (
-          <div 
+          <div
             ref={recentChatsRef}
             className="absolute inset-0 z-50 lg:hidden animate-slide-in"
           >
             <div className={`h-full w-64 rounded-l-2xl p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'} border-r ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              {/* Mobile Recent Chats Header with Close Button */}
               <div className="mb-4 flex items-center justify-between">
                 <button
                   onClick={() => setShowRecentChats(false)}
                   className={`p-2 rounded-lg ${darkMode
-                      ? 'hover:bg-gray-700 text-gray-300'
-                      : 'hover:bg-gray-100 text-gray-600'
+                    ? 'hover:bg-gray-700 text-gray-300'
+                    : 'hover:bg-gray-100 text-gray-600'
                     }`}
                 >
                   <X size={20} />
                 </button>
               </div>
-              
+
               <div className="mb-4">
                 <button
                   onClick={() => {
@@ -515,8 +592,8 @@ const UserBot = () => {
                     setShowRecentChats(false);
                   }}
                   className={`w-full py-2 px-6 rounded-2xl text-sm font-medium transition-all duration-200 ${darkMode
-                      ? 'bg-green-700 hover:bg-green-600 text-gray-200'
-                      : 'bg-green-600 hover:bg-green-500 text-white'
+                    ? 'bg-green-700 hover:bg-green-600 text-gray-200'
+                    : 'bg-green-600 hover:bg-green-500 text-white'
                     }`}
                 >
                   <div className="flex items-center justify-center gap-2">
@@ -525,26 +602,26 @@ const UserBot = () => {
                   </div>
                 </button>
               </div>
-              
+
               <h2 className={`text-sm mb-2 ml-1 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 Recent chats
               </h2>
 
-              {/* Mobile Recent Chats List */}
               <div className="space-y-2">
                 {recentChats.map((chat, index) => (
                   <button
                     key={index}
-                    className={`w-full text-left py-2 px-3 rounded-lg transition-all duration-200 ${darkMode
-                        ? 'hover:bg-gray-700 text-gray-300'
-                        : 'hover:bg-gray-100 text-gray-700'
+                    className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
+                      ? 'hover:bg-gray-700 text-gray-300'
+                      : 'hover:bg-gray-100 text-gray-700'
                       }`}
                     onClick={() => {
                       setShowRecentChats(false);
-                      console.log('Loading chat:', chat);
+                      navigate(`/user/bot/${chat.id}`);
+                      loadChatById(chat.id);
                     }}
                   >
-                    <span className="text-sm truncate block">{chat}</span>
+                    <span className="text-sm truncate block">{chat.chat_name || "New Chat"}</span>
                   </button>
                 ))}
               </div>
