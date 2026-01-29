@@ -197,7 +197,7 @@ const DashboardLayout = () => {
 
           {/* Right Side - Main Content */}
           <div
-            className={`flex-1 transition-all duration-300 ease-in-out relative lg:ml-0 transition-colors duration-300`}
+            className={`flex-1 flex flex-col h-full transition-all duration-300 ease-in-out relative lg:ml-0 transition-colors duration-300`}
             style={{
               background: darkMode ? '#111827' : 'rgba(244, 249, 253, 1)'
             }}
@@ -223,7 +223,7 @@ const DashboardLayout = () => {
                   <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-max">
                     {/* 1. Language Selector - Hidden on mobile, shown in dropdown */}
                     <div
-                      className={`hidden md:flex rounded-full font-medium px-3 sm:px-4 py-1.5 sm:py-2 shadow-sm items-center gap-1 sm:gap-2 relative cursor-pointer select-none overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-gray-800' : 'bg-white'
+                      className={`hidden  ${userRole == "admin" ? 'md:hidden sm:hidden lg:hidden' : 'md:flex'} rounded-full font-medium px-3 sm:px-4 py-1.5 sm:py-2 shadow-sm items-center gap-1 sm:gap-2 relative cursor-pointer select-none overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-gray-800' : 'bg-white'
                         }`}
                       onClick={() => setLanguage(language === "english" ? "urdu" : "english")}
                     >
@@ -416,10 +416,10 @@ const DashboardLayout = () => {
                         >
                           <div className="py-2">
                             {/* Language Selector for Mobile */}
-                            <div className="md:hidden px-4 py-2 border-b border-gray-200">
+                            <div className={`md:hidden px-4 py-2 ${userRole == "admin" ? 'hidden' : 'md:flex'} border-b border-gray-200`}>
                               <div className="text-xs text-gray-500 mb-2 select-none">Language</div>
                               <div
-                                className="flex gap-2 bg-gray-100 rounded-full p-1 cursor-pointer select-none relative overflow-hidden"
+                                className={`flex gap-2 bg-gray-100  rounded-full p-1 cursor-pointer select-none relative overflow-hidden`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setLanguage(language === "english" ? "urdu" : "english");
@@ -493,9 +493,9 @@ const DashboardLayout = () => {
             </div>
 
             {/* Page Content */}
-            <div className="p-2 sm:p-4">
-              <div className="grid grid-cols-12">
-                <div className="col-span-12">
+            <div className="p-2 sm:p-4 flex-1 overflow-auto">
+              <div className="grid grid-cols-12 h-full">
+                <div className="col-span-12 h-full">
                   <DarkModeContext.Provider value={darkMode}>
                     <Outlet />
                   </DarkModeContext.Provider>

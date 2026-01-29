@@ -2,17 +2,8 @@
 import React, { lazy } from "react";
 import {
   LayoutDashboard,
-  User,
   Users,
   Settings as SettingsIcon,
-  Box,
-  ShoppingCart,
-  CreditCard,
-  FileText,
-  Activity,
-  Truck,
-  BarChart3,
-  MessageCircle,
   MessagesSquare,
   UserCircle,
   Calendar,
@@ -50,19 +41,11 @@ export const roleBasedRoutes = {
       allowedRoles: ["admin"],
     },
     {
-      name: "Admin Hub",
-      icon: <UserCircle size={20} />,
-      path: "/hub",
-      component: UserSettings,
-      allowedRoles: ["admin"],
-    },
-    {
       name: "Settings",
       icon: <SettingsIcon size={20} />,
       path: "/settings",
       component: AdminSettings,
       allowedRoles: ["admin"],
-      hidden: true,
     },
   ],
   user: [
@@ -76,9 +59,17 @@ export const roleBasedRoutes = {
     {
       name: "Bot",
       icon: <MessagesSquare size={20} />,
+      path: "/bot/",
+      component: UserBot,
+      allowedRoles: ["user"],
+    },
+    {
+      name: "Bot",
+      icon: <MessagesSquare size={20} />,
       path: "/bot/:chatId?",
       component: UserBot,
       allowedRoles: ["user"],
+      hidden: true,
     },
     {
       name: "Calendar",
@@ -101,43 +92,12 @@ export const roleBasedRoutes = {
     //   ]
     // },
     {
-      name: "Profile Hub",
-      icon: <UserCircle size={20} />,
-      path: "/hub",
-      component: UserSettings,
-      allowedRoles: ["user"],
-    },
-    {
       name: "Settings",
       icon: <SettingsIcon size={20} />,
       path: "/settings",
       component: UserSettings,
       allowedRoles: ["user"],
-      hidden: true,
-    },
-  ],
-  client: [
-    {
-      name: "Dashboard",
-      icon: <LayoutDashboard size={20} />,
-      path: "/dashboard",
-      component: UserDashboard,
-      allowedRoles: ["client"],
-    },
-    {
-      name: "Profile Hub",
-      icon: <UserCircle size={20} />,
-      path: "/hub",
-      component: UserSettings,
-      allowedRoles: ["client"],
-    },
-    {
-      name: "Settings",
-      icon: <SettingsIcon size={20} />,
-      path: "/settings",
-      component: UserSettings,
-      allowedRoles: ["client"],
-      hidden: true,
+
     },
   ],
 };

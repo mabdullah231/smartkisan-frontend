@@ -5,6 +5,7 @@ import Helpers from "./config/Helpers";
 import { Login, Register, ForgetPassword } from "./screens";
 import { roleBasedRoutes, ROLE_PREFIXES } from "./screens/routes";
 import "./App.css";
+import AdminLogin from "./screens/auth/AdminLogin";
 
 
 // Loading component
@@ -111,6 +112,14 @@ function App() {
           element={
             <Auth isAuth={false}>
               <Login />
+            </Auth>
+          }
+        />
+        <Route
+          path="/admin-login"
+          element={
+            <Auth isAuth={false}>
+              <AdminLogin />
             </Auth>
           }
         />
