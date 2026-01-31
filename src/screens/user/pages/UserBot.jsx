@@ -12,6 +12,7 @@ const UserBot = () => {
   const darkMode = useContext(DarkModeContext);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [recentChats, setRecentChats] = useState([]);
   const [chatId, setChatId] = useState(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -37,35 +38,58 @@ const UserBot = () => {
     setMessage("");
 
     try {
-      let response;
+      setIsLoading(true);
 
-      if (!chatId) {
-        response = await axios.post(
-          `${Helpers.apiUrl}chat`,
-          { question: userMessage.text },
-          Helpers.getAuthHeaders()
-        );
-
-        const newChatId = response.data.chat_id;
-        setChatId(newChatId);
-        navigate(`/user/bot/${newChatId}`);
-        await getRecentChats();
-      } else {
-        response = await axios.post(
-          `${Helpers.apiUrl}chat/${chatId}`,
-          { question: userMessage.text },
-          Helpers.getAuthHeaders()
-        );
-      }
-
-      const botMessage = {
-        id: Date.now() + 1,
-        text: response.data.answer,
+      // add streaming bot placeholder
+      const botId = `bot-${Date.now()}`;
+      const botPlaceholder = {
+        id: botId,
+        text: "",
         sender: "bot",
         timestamp: new Date().toISOString()
       };
+      setMessages(prev => [...prev, botPlaceholder]);
 
-      setMessages(prev => [...prev, botMessage]);
+      const authHeaders = Helpers.getAuthHeaders().headers;
+      const url = !chatId ? `${Helpers.apiUrl}chat?stream=1` : `${Helpers.apiUrl}chat/${chatId}?stream=1`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeaders || {})
+        },
+        body: JSON.stringify({ question: userMessage.text })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || res.statusText);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let accumulated = "";
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        if (value) {
+          const chunk = decoder.decode(value);
+          accumulated += chunk;
+          // append chunk to bot message
+          setMessages(prev => prev.map(m => m.id === botId ? { ...m, text: (m.text || "") + chunk } : m));
+        }
+      }
+
+      // If server provided chat id header on creation, set it
+      const newChatId = res.headers.get('X-Chat-Id');
+      if (newChatId && !chatId) {
+        setChatId(newChatId);
+        navigate(`/user/bot/${newChatId}`);
+        await getRecentChats();
+      }
 
       setTimeout(() => {
         if (messagesEndRef.current) {
@@ -78,6 +102,11 @@ const UserBot = () => {
 
     } catch (error) {
       console.error(error);
+      // show error in bot bubble
+      const errId = `bot-err-${Date.now()}`;
+      setMessages(prev => [...prev, { id: errId, text: 'Error generating response', sender: 'bot', timestamp: new Date().toISOString() }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -264,6 +293,28 @@ const UserBot = () => {
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
         }
+
+        .slim-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+        }
+
+        .slim-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        .slim-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .slim-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(156, 163, 175, 0.4);
+          border-radius: 2px;
+        }
+
+        .slim-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(156, 163, 175, 0.6);
+        }
       `}</style>
 
       <div className="relative min-h-[calc(100vh-75px)] md:min-h-[calc(100vh-100px)] sm:min-h-[calc(100vh-100px)] flex grow">
@@ -302,7 +353,7 @@ const UserBot = () => {
                   Recent chats
                 </h2>
 
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] slim-scrollbar">
                   {recentChats.map((chat) => (
                     <button
                       key={chat.id}
@@ -552,14 +603,14 @@ const UserBot = () => {
 
                   <button
                     onClick={handleSendMessage}
-                    className={`p-1.5 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95 relative z-10 ${message.trim()
+                    className={`p-1.5 rounded-lg transition-all duration-200 transform hover:scale-110 active:scale-95 relative z-10 ${message.trim() && !isLoading
                       ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
                       : 'bg-green-600 text-white opacity-50 cursor-not-allowed'
                       }`}
-                    disabled={!message.trim()}
+                    disabled={!message.trim() || isLoading}
                     aria-label="Send message"
                   >
-                    <ArrowRight size={18} />
+                    {!isLoading ? <ArrowRight size={18} /> : <span className="inline-block w-5 h-4">...</span>}
                   </button>
                 </div>
               </div>
@@ -607,24 +658,26 @@ const UserBot = () => {
                 Recent chats
               </h2>
 
-              <div className="space-y-2">
-                {recentChats.map((chat, index) => (
-                  <button
-                    key={index}
-                    className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
-                      ? 'hover:bg-gray-700 text-gray-300'
-                      : 'hover:bg-gray-100 text-gray-700'
-                      }`}
-                    onClick={() => {
-                      setShowRecentChats(false);
-                      navigate(`/user/bot/${chat.id}`);
-                      loadChatById(chat.id);
-                    }}
-                  >
-                    <span className="text-sm truncate block">{chat.chat_name || "New Chat"}</span>
-                  </button>
-                ))}
-              </div>
+            <div
+              className="space-y-2 overflow-y-auto max-h-[calc(100vh-400px)] slim-scrollbar"
+            >
+              {recentChats.map((chat, index) => (
+                <button
+                  key={index}
+                  className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
+                    ? 'hover:bg-gray-700 text-gray-300'
+                    : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  onClick={() => {
+                    setShowRecentChats(false);
+                    navigate(`/user/bot/${chat.id}`);
+                    loadChatById(chat.id);
+                  }}
+                >
+                  <span className="text-sm truncate block">{chat.chat_name || "New Chat"}</span>
+                </button>
+              ))}
+            </div>
             </div>
           </div>
         )}

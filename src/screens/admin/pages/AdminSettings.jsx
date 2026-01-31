@@ -1,37 +1,17 @@
-import React, { useContext, useState } from "react";
-import { Plus, Eye, Pencil, Trash2, X, ChevronLeft } from "lucide-react";
+import React, { useContext, useState, useEffect } from "react";
+import { Plus, Eye, Pencil, Trash2, X, ChevronLeft, Check } from "lucide-react";
 import { DarkModeContext } from "../../DashboardLayout";
 import TextInput from "../../../components/common/form-fields/TextInput";
-
-const mockData = [
-  {
-    id: 1,
-    category: "ai",
-    provider: "Gemini",
-    base_url: "https://generativelanguage.googleapis.com",
-    api_key: "********",
-    extra_config: { model: "gemini-1.5-flash", temperature: "0.7" },
-    is_active: true,
-    created_at: "2024-01-15T10:30:00Z",
-    updated_at: "2024-01-20T14:45:00Z",
-  },
-  {
-    id: 2,
-    category: "weather",
-    provider: "Open‑Meteo",
-    base_url: "https://api.open-meteo.com",
-    api_key: null,
-    extra_config: { units: "metric", language: "en" },
-    is_active: true,
-    created_at: "2024-01-10T08:15:00Z",
-    updated_at: "2024-01-18T16:20:00Z",
-  },
-];
+import Helpers from "../../../config/Helpers";
+import axios from "axios";
 
 const AdminSettings = () => {
   const darkMode = useContext(DarkModeContext);
   const [currentView, setCurrentView] = useState("list"); // 'list', 'add', 'edit', 'view'
   const [selected, setSelected] = useState(null);
+  const [apis, setApis] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [formData, setFormData] = useState({
     category: "",
     provider: "",
@@ -40,6 +20,29 @@ const AdminSettings = () => {
     is_active: true,
     extra_config: [],
   });
+
+  // Fetch all APIs on component mount
+  useEffect(() => {
+    fetchApis();
+  }, []);
+
+  const fetchApis = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(
+        `${Helpers.apiUrl}apis`,
+        Helpers.getAuthHeaders()
+      );
+      if (response.data.success) {
+        setApis(response.data.apis);
+      }
+    } catch (error) {
+      console.error("Error fetching APIs:", error);
+      Helpers.toast("error", "Failed to load API configurations");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -74,20 +77,32 @@ const AdminSettings = () => {
     setCurrentView("edit");
   };
 
-  const openView = (item) => {
-    const extraConfigArray = item.extra_config
-      ? Object.entries(item.extra_config).map(([key, value]) => ({ key, value }))
-      : [];
-    setFormData({
-      category: item.category || "",
-      provider: item.provider || "",
-      base_url: item.base_url || "",
-      api_key: item.api_key || "",
-      is_active: item.is_active,
-      extra_config: extraConfigArray,
-    });
-    setSelected(item);
-    setCurrentView("view");
+  const openView = async (item) => {
+    try {
+      const response = await axios.get(
+        `${Helpers.apiUrl}apis/${item.id}`,
+        Helpers.getAuthHeaders()
+      );
+      if (response.data.success) {
+        const apiData = response.data.api;
+        const extraConfigArray = apiData.extra_config
+          ? Object.entries(apiData.extra_config).map(([key, value]) => ({ key, value }))
+          : [];
+        setFormData({
+          category: apiData.category || "",
+          provider: apiData.provider || "",
+          base_url: apiData.base_url || "",
+          api_key: apiData.api_key || "",
+          is_active: apiData.is_active,
+          extra_config: extraConfigArray,
+        });
+        setSelected(apiData);
+        setCurrentView("view");
+      }
+    } catch (error) {
+      console.error("Error loading API details:", error);
+      Helpers.toast("error", "Failed to load API details");
+    }
   };
 
   const backToList = () => {
@@ -121,29 +136,79 @@ const AdminSettings = () => {
     }));
   };
 
-  const handleSave = () => {
-    const configObject = formData.extra_config.reduce((acc, { key, value }) => {
-      if (key.trim()) {
-        acc[key.trim()] = value;
+  const handleSave = async () => {
+    try {
+      const configObject = formData.extra_config.reduce((acc, { key, value }) => {
+        if (key.trim()) {
+          acc[key.trim()] = value;
+        }
+        return acc;
+      }, {});
+
+      const dataToSave = {
+        category: formData.category,
+        provider: formData.provider,
+        base_url: formData.base_url,
+        api_key: formData.api_key,
+        is_active: formData.is_active,
+        extra_config: Object.keys(configObject).length > 0 ? configObject : null,
+      };
+
+      if (currentView === "add") {
+        // POST new API
+        const response = await axios.post(
+          `${Helpers.apiUrl}apis`,
+          dataToSave,
+          Helpers.getAuthHeaders()
+        );
+        if (response.data.success) {
+          Helpers.toast("success", "API configuration created successfully");
+          await fetchApis();
+          backToList();
+        }
+      } else if (currentView === "edit") {
+        // PUT update API
+        const response = await axios.put(
+          `${Helpers.apiUrl}apis/${selected.id}`,
+          dataToSave,
+          Helpers.getAuthHeaders()
+        );
+        if (response.data.success) {
+          Helpers.toast("success", "API configuration updated successfully");
+          await fetchApis();
+          backToList();
+        }
       }
-      return acc;
-    }, {});
-
-    const dataToSave = {
-      ...formData,
-      extra_config: Object.keys(configObject).length > 0 ? configObject : null,
-    };
-
-    console.log("Saving:", dataToSave);
-    // Add your save logic here
-    backToList();
+    } catch (error) {
+      console.error("Error saving API:", error);
+      Helpers.toast("error", error.response?.data?.detail || "Failed to save API configuration");
+    }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm("Are you sure you want to delete this API configuration?")) {
-      console.log("Deleting:", id);
-      // Add your delete logic here
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+  };
+
+  const confirmDelete = async (id) => {
+    try {
+      const response = await axios.delete(
+        `${Helpers.apiUrl}apis/${id}`,
+        Helpers.getAuthHeaders()
+      );
+      if (response.data.success) {
+        Helpers.toast("success", "API configuration deleted successfully");
+        await fetchApis();
+        setDeletingId(null);
+      }
+    } catch (error) {
+      console.error("Error deleting API:", error);
+      Helpers.toast("error", "Failed to delete API configuration");
+      setDeletingId(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setDeletingId(null);
   };
 
   // List View
@@ -174,7 +239,14 @@ const AdminSettings = () => {
               darkMode ? "bg-gray-800" : "bg-white"
             }`}
           >
-            <div className="overflow-x-auto">
+            {apis.length === 0 ? (
+              <div className={`p-8 text-center ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+                <p className={`text-lg ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  No APIs created yet.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead
                   className={`${
@@ -190,7 +262,7 @@ const AdminSettings = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {mockData.map((item) => (
+                  {apis.map((item) => (
                     <tr
                       key={item.id}
                       className={`border-t ${
@@ -265,6 +337,26 @@ const AdminSettings = () => {
                             <Trash2 size={16} className="inline mr-1" />
                             Delete
                           </button>
+                          {deletingId === item.id && (
+                            <>
+                              <button
+                                onClick={() => confirmDelete(item.id)}
+                                className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                title="Confirm Delete"
+                              >
+                                <Check size={16} className="inline mr-1" />
+                                Confirm
+                              </button>
+                              <button
+                                onClick={cancelDelete}
+                                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                title="Cancel Delete"
+                              >
+                                <X size={16} className="inline mr-1" />
+                                No
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -272,11 +364,20 @@ const AdminSettings = () => {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           {/* Cards - Mobile & Tablet (below 900px) */}
-          <div className="lg:hidden space-y-4">
-            {mockData.map((item) => (
+          <div className="lg:hidden">
+            {apis.length === 0 ? (
+              <div className={`p-8 text-center rounded-xl ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+                <p className={`text-lg ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  No APIs created yet.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+            {apis.map((item) => (
               <div
                 key={item.id}
                 className={`rounded-xl p-4 shadow-sm ${
@@ -347,38 +448,62 @@ const AdminSettings = () => {
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => openView(item)}
-                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        darkMode
-                          ? "bg-blue-600 hover:bg-blue-700 text-white"
-                          : "bg-blue-500 hover:bg-blue-600 text-white"
-                      }`}
-                    >
-                      <Eye size={16} className="inline mr-1" />
-                      View
-                    </button>
-                    <button
-                      onClick={() => openEdit(item)}
-                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        darkMode
-                          ? "bg-amber-600 hover:bg-amber-700 text-white"
-                          : "bg-amber-500 hover:bg-amber-600 text-white"
-                      }`}
-                    >
-                      <Pencil size={16} className="inline mr-1" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {deletingId !== item.id && (
+                      <>
+                        <button
+                          onClick={() => openView(item)}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            darkMode
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "bg-blue-500 hover:bg-blue-600 text-white"
+                          }`}
+                        >
+                          <Eye size={16} className="inline mr-1" />
+                          View
+                        </button>
+                        <button
+                          onClick={() => openEdit(item)}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            darkMode
+                              ? "bg-amber-600 hover:bg-amber-700 text-white"
+                              : "bg-amber-500 hover:bg-amber-600 text-white"
+                          }`}
+                        >
+                          <Pencil size={16} className="inline mr-1" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                    {deletingId === item.id && (
+                      <>
+                        <button
+                          onClick={() => confirmDelete(item.id)}
+                          className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex-1"
+                        >
+                          <Check size={16} className="inline mr-1" />
+                          Confirm
+                        </button>
+                        <button
+                          onClick={cancelDelete}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex-1"
+                        >
+                          <X size={16} className="inline mr-1" />
+                          No
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             ))}
+            </div>
+            )}
           </div>
         </div>
       </div>
