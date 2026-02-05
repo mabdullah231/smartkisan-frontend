@@ -4,6 +4,7 @@ import Helpers from "../../../config/Helpers";
 import { DarkModeContext } from "../../DashboardLayout";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
+import DOMPurify from 'dompurify';
 
 
 const UserBot = () => {
@@ -40,7 +41,6 @@ const UserBot = () => {
     try {
       setIsLoading(true);
 
-      // add streaming bot placeholder
       const botId = `bot-${Date.now()}`;
       const botPlaceholder = {
         id: botId,
@@ -51,7 +51,15 @@ const UserBot = () => {
       setMessages(prev => [...prev, botPlaceholder]);
 
       const authHeaders = Helpers.getAuthHeaders().headers;
-      const url = !chatId ? `${Helpers.apiUrl}chat?stream=1` : `${Helpers.apiUrl}chat/${chatId}?stream=1`;
+
+      const targetChatId = paramChatId || chatId;
+      console.log(paramChatId, chatId);
+
+      // return 
+      const shouldCreateNewChat = !targetChatId;
+      const url = shouldCreateNewChat
+        ? `${Helpers.apiUrl}chat?stream=1`
+        : `${Helpers.apiUrl}chat/${targetChatId}?stream=1`;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -62,35 +70,50 @@ const UserBot = () => {
         body: JSON.stringify({ question: userMessage.text })
       });
 
+      console.log('🔍 Response headers check:');
+      console.log('X-Chat-Id:', res.headers.get('X-Chat-Id'));
+      console.log('x-chat-id:', res.headers.get('x-chat-id')); // try lowercase
+      console.log('X-Chat-Name:', res.headers.get('X-Chat-Name'));
+      console.log('All headers:', Array.from(res.headers.entries()));
+
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(errText || res.statusText);
       }
 
+      // ✅ READ HEADERS IMMEDIATELY
+      const responseChatId = res.headers.get('X-Chat-Id');
+
+      // ✅ UPDATE URL IMMEDIATELY FOR NEW CHATS
+      if (shouldCreateNewChat && responseChatId) {
+        setChatId(responseChatId);
+        navigate(`/user/bot/${responseChatId}`, { replace: true });
+      }
+      // Set chatId state for existing chats
+      else if (targetChatId && !chatId) {
+        setChatId(targetChatId);
+      }
+
+      // NOW start streaming
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
-      let accumulated = "";
 
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
           const chunk = decoder.decode(value);
-          accumulated += chunk;
-          // append chunk to bot message
-          setMessages(prev => prev.map(m => m.id === botId ? { ...m, text: (m.text || "") + chunk } : m));
+          setMessages(prev => prev.map(m =>
+            m.id === botId ? { ...m, text: (m.text || "") + chunk } : m
+          ));
         }
       }
 
-      // If server provided chat id header on creation, set it
-      const newChatId = res.headers.get('X-Chat-Id');
-      if (newChatId && !chatId) {
-        setChatId(newChatId);
-        navigate(`/user/bot/${newChatId}`);
-        await getRecentChats();
-      }
+      // Refresh chat list
+      await getRecentChats();
 
+      // Scroll to bottom
       setTimeout(() => {
         if (messagesEndRef.current) {
           messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -102,17 +125,28 @@ const UserBot = () => {
 
     } catch (error) {
       console.error(error);
-      // show error in bot bubble
-      const errId = `bot-err-${Date.now()}`;
-      setMessages(prev => [...prev, { id: errId, text: 'Error generating response', sender: 'bot', timestamp: new Date().toISOString() }]);
+      setMessages(prev => prev.map(m =>
+        m.id === botId
+          ? { ...m, text: 'Error generating response' }
+          : m
+      ));
     } finally {
       setIsLoading(false);
     }
   };
 
+
   useEffect(() => {
     if (paramChatId) {
-      loadChatById(paramChatId);
+      // Load chat if URL has an ID and it's different from current
+      if (String(paramChatId) !== String(chatId)) {
+        loadChatById(paramChatId);
+        setChatId(paramChatId);
+      }
+    } else if (chatId !== null) {
+      // Only clear if we're moving away from a chat
+      setMessages([]);
+      setChatId(null);
     }
   }, [paramChatId]);
 
@@ -138,7 +172,8 @@ const UserBot = () => {
 
   const handleNewChat = () => {
     setMessages([]);
-    setChatId(null);
+    setChatId(null);  // Already there, but needs to work with useEffect
+    setMessage("")
     navigate(`/user/bot`);
   };
 
@@ -315,6 +350,7 @@ const UserBot = () => {
         .slim-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(156, 163, 175, 0.6);
         }
+
       `}</style>
 
       <div className="relative min-h-[calc(100vh-75px)] md:min-h-[calc(100vh-100px)] sm:min-h-[calc(100vh-100px)] flex grow">
@@ -357,7 +393,7 @@ const UserBot = () => {
                   {recentChats.map((chat) => (
                     <button
                       key={chat.id}
-                      className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
+                      className={`w-full text-left py-2 px-3 ${(chat.id == chatId || chat.id == paramChatId) ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
                         ? "hover:bg-gray-700 text-gray-300"
                         : "hover:bg-gray-100 text-gray-700"
                         }`}
@@ -408,9 +444,12 @@ const UserBot = () => {
                               ? 'bg-gray-700 text-gray-200 rounded-bl-none'
                               : 'bg-gray-100 text-gray-800 rounded-bl-none'
                             }`}>
-                            <p className="text-sm leading-relaxed">
-                              {msg.text}
-                            </p>
+                            <div
+                              className="text-sm leading-relaxed message-content"
+                              dangerouslySetInnerHTML={{
+                                __html: DOMPurify.sanitize(msg.text || '')
+                              }}
+                            />
                           </div>
 
                           {msg.sender === 'user' && (
@@ -527,14 +566,17 @@ const UserBot = () => {
                     )}
 
                     <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                      ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                      : darkMode
-                        ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                        ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                        : darkMode
+                          ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                          : 'bg-gray-100 text-gray-800 rounded-bl-none'
                       }`}>
-                      <p className="text-sm leading-relaxed">
-                        {msg.text}
-                      </p>
+                      <div
+                        className="text-sm leading-relaxed "
+                        dangerouslySetInnerHTML={{
+                          __html: DOMPurify.sanitize(msg.text || '')
+                        }}
+                      />
                     </div>
 
                     {msg.sender === 'user' && (
@@ -658,26 +700,26 @@ const UserBot = () => {
                 Recent chats
               </h2>
 
-            <div
-              className="space-y-2 overflow-y-auto max-h-[calc(100vh-400px)] slim-scrollbar"
-            >
-              {recentChats.map((chat, index) => (
-                <button
-                  key={index}
-                  className={`w-full text-left py-2 px-3 ${chat.id == chatId ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
-                    ? 'hover:bg-gray-700 text-gray-300'
-                    : 'hover:bg-gray-100 text-gray-700'
-                    }`}
-                  onClick={() => {
-                    setShowRecentChats(false);
-                    navigate(`/user/bot/${chat.id}`);
-                    loadChatById(chat.id);
-                  }}
-                >
-                  <span className="text-sm truncate block">{chat.chat_name || "New Chat"}</span>
-                </button>
-              ))}
-            </div>
+              <div
+                className="space-y-2 overflow-y-auto max-h-[calc(100vh-400px)] slim-scrollbar"
+              >
+                {recentChats.map((chat, index) => (
+                  <button
+                    key={index}
+                    className={`w-full text-left py-2 px-3 ${(chat.id == chatId || chat.id == paramChatId) ? 'font-bold' : ''} rounded-lg transition-all duration-200 ${darkMode
+                      ? 'hover:bg-gray-700 text-gray-300'
+                      : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                    onClick={() => {
+                      setShowRecentChats(false);
+                      navigate(`/user/bot/${chat.id}`);
+                      loadChatById(chat.id);
+                    }}
+                  >
+                    <span className="text-sm truncate block">{chat.chat_name || "New Chat"}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
