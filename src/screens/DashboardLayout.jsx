@@ -18,15 +18,37 @@ const DashboardLayout = () => {
   const navigationItems = roleBasedRoutes[roleKey] || roleBasedRoutes.user;
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [language, setLanguage] = useState("english"); // "english" or "urdu"
-  const [darkMode, setDarkMode] = useState(false); // Testing mode - no localStorage
+  const [darkMode, setDarkMode] = useState(false); // default light mode
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isNotificationOpen, setNotificationOpen] = useState(false);
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
 
+  // Initialize dark mode from localStorage (default: light)
+  useEffect(() => {
+    try {
+      const storedDarkMode = Helpers.getItem("darkMode");
+      if (storedDarkMode === "true") {
+        setDarkMode(true);
+      }
+    } catch (e) {
+      // Fail silently if localStorage is not accessible
+    }
+  }, []);
+
+  // Persist dark mode preference to localStorage
+  useEffect(() => {
+    try {
+      Helpers.setItem("darkMode", darkMode ? "true" : "false");
+    } catch (e) {
+      // Fail silently if localStorage is not accessible
+    }
+  }, [darkMode]);
+
       const handleLogout = () => {
       Helpers.removeItem("token");
       Helpers.removeItem("user");
+      Helpers.removeItem("darkMode"); // Clear dark mode preference on logout
       Helpers.toast("success", "Logged Out Successfully");
       let logOutRoute = userRole === "user" ? "/login" : "/admin-login";
       navigate(logOutRoute);

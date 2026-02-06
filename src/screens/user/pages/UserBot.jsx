@@ -67,7 +67,15 @@ const UserBot = () => {
           'Content-Type': 'application/json',
           ...(authHeaders || {})
         },
-        body: JSON.stringify({ question: userMessage.text })
+        body: JSON.stringify({
+          question: userMessage.text,
+          history: messages
+            .slice(-6) 
+            .map(m => ({
+              role: m.sender, 
+              content: m.text
+            }))
+        })
       });
 
       console.log('🔍 Response headers check:');
@@ -566,10 +574,10 @@ const UserBot = () => {
                     )}
 
                     <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                        ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                        : darkMode
-                          ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                          : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                      ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                      : darkMode
+                        ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                        : 'bg-gray-100 text-gray-800 rounded-bl-none'
                       }`}>
                       <div
                         className="text-sm leading-relaxed "
