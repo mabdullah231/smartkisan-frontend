@@ -1,10 +1,11 @@
 import React, { useContext, useState, useRef, useEffect } from 'react'
-import { DarkModeContext } from '../../DashboardLayout'
+import { DarkModeContext, LanguageContext } from '../../DashboardLayout'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 
 const UserCalendar = () => {
   const darkMode = useContext(DarkModeContext)
+  const language = useContext(LanguageContext)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const modalRef = useRef(null)
 
@@ -26,7 +27,7 @@ const UserCalendar = () => {
   return (
     <div className="flex flex-col h-[calc(100vh-100px)]">
       <h1 className={`text-2xl font-semibold mb-2 ${darkMode ? 'text-white' : 'text-black'}`}>
-        Calendar
+        {language === "urdu" ? "کیلنڈر" : "Calendar"}
       </h1>
 
       <div className={`flex-1 ${darkMode ? 'dark' : 'light'}`}>
@@ -39,14 +40,14 @@ const UserCalendar = () => {
           }}
           events={[
             {
-              title: 'event 1',
+              title: language === "urdu" ? 'تقریب 1' : 'event 1',
               date: '2026-01-02',
-              description: 'This is a short description for event 1.'
+              description: language === "urdu" ? 'تقریب 1 کی مختصر تفصیل۔' : 'This is a short description for event 1.'
             },
             {
-              title: 'event 2',
+              title: language === "urdu" ? 'تقریب 2' : 'event 2',
               date: '2026-01-04',
-              description: 'Another one or two liner description goes here.'
+              description: language === "urdu" ? 'یہاں تقریب 2 کی ایک دو سطروں کی تفصیل ہے۔' : 'Another one or two liner description goes here.'
             }
           ]}
         />

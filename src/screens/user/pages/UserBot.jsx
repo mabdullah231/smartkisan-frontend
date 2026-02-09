@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
 import { Plus, Mic, ArrowRight, Bot, User, ChevronDown, MessageSquare, X } from "lucide-react";
 import Helpers from "../../../config/Helpers";
-import { DarkModeContext } from "../../DashboardLayout";
+import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import DOMPurify from 'dompurify';
@@ -11,6 +11,7 @@ const UserBot = () => {
   const { chatId: paramChatId } = useParams();
   const authUser = Helpers.getAuthUser();
   const darkMode = useContext(DarkModeContext);
+  const language = useContext(LanguageContext);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -389,12 +390,12 @@ const UserBot = () => {
                   >
                     <div className="flex items-center justify-center gap-2">
                       <Plus size={16} />
-                      New Chat
+                      {language === "urdu" ? "نئی چیٹ" : "New Chat"}
                     </div>
                   </button>
                 </div>
                 <h2 className={`text-sm font-medium mb-2 ml-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Recent chats
+                  {language === "urdu" ? "حالیہ چیٹس" : "Recent chats"}
                 </h2>
 
                 <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-300px)] slim-scrollbar">
@@ -429,7 +430,7 @@ const UserBot = () => {
                       {messages.length === 0 && (
                         <div className="h-full flex items-center justify-center">
                           <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Start by asking something
+                            {language === "urdu" ? "کچھ پوچھ کر آغاز کریں" : "Start by asking something"}
                           </p>
                         </div>
                       )}
@@ -512,11 +513,12 @@ const UserBot = () => {
                           type="text"
                           value={message}
                           onChange={(e) => setMessage(e.target.value)}
-                          placeholder="Ask me anything..."
+                          placeholder={language === "urdu" ? "کچھ بھی پوچھیں..." : "Ask me anything..."}
                           className={`flex-1 px-3 py-1.5 rounded-xl border-0 outline-none text-sm transition-all duration-300 transform relative z-10 ${darkMode
                             ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
                             : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
                             }`}
+                          style={{ direction: language === "urdu" ? "rtl" : "ltr" }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && message.trim()) {
                               handleSendMessage();
@@ -556,7 +558,7 @@ const UserBot = () => {
                 {messages.length === 0 && (
                   <div className="h-full flex items-center justify-center">
                     <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Start by asking something
+                      {language === "urdu" ? "کچھ پوچھ کر آغاز کریں" : "Start by asking something"}
                     </p>
                   </div>
                 )}
@@ -639,7 +641,7 @@ const UserBot = () => {
                     type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Ask me anything..."
+                    placeholder={language === "urdu" ? "کچھ بھی پوچھیں..." : "Ask me anything..."}
                     className={`flex-1 px-3 py-1.5 rounded-xl border-0 outline-none text-sm transition-all duration-300 transform relative z-10 ${darkMode
                       ? 'bg-gray-700 text-gray-200 placeholder-gray-400 focus:bg-gray-600 focus:scale-[1.02]'
                       : 'bg-white/80 text-gray-800 placeholder-gray-500 focus:bg-white focus:scale-[1.02]'
@@ -699,13 +701,13 @@ const UserBot = () => {
                 >
                   <div className="flex items-center justify-center gap-2">
                     <Plus size={16} />
-                    New Chat
+                    {language === "urdu" ? "نئی چیٹ" : "New Chat"}
                   </div>
                 </button>
               </div>
 
               <h2 className={`text-sm mb-2 ml-1 font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Recent chats
+                {language === "urdu" ? "حالیہ چیٹس" : "Recent chats"}
               </h2>
 
               <div

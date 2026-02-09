@@ -5,8 +5,9 @@ import Helpers from "../config/Helpers";
 import { roleBasedRoutes, getFullPath } from "./routes";
 import BotSidebarDropdown from "../components/BotSideBarDropdown";
 
-// Create DarkMode Context
+// Create Contexts
 export const DarkModeContext = createContext(false);
+export const LanguageContext = createContext("english");
 
 const DashboardLayout = () => {
   const location = useLocation();
@@ -17,12 +18,38 @@ const DashboardLayout = () => {
   const roleKey = userRole === "client" ? "client" : userRole;
   const navigationItems = roleBasedRoutes[roleKey] || roleBasedRoutes.user;
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [language, setLanguage] = useState("english"); // "english" or "urdu"
+  const [language, setLanguage] = useState(() => {
+    try {
+      return Helpers.getItem("language") || "english";
+    } catch {
+      return "english";
+    }
+  }); // "english" or "urdu"
   const [darkMode, setDarkMode] = useState(false); // default light mode
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
   const [isNotificationOpen, setNotificationOpen] = useState(false);
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
+
+  const getLocalizedRouteName = (name) => {
+    if (language === "urdu") {
+      switch (name) {
+        case "Dashboard":
+          return "ڈیش بورڈ";
+        case "Users":
+          return "صارفین";
+        case "Bot":
+          return "چیٹ بوٹ";
+        case "Calendar":
+          return "کیلنڈر";
+        case "Settings":
+          return "سیٹنگز";
+        default:
+          return name;
+      }
+    }
+    return name;
+  };
 
   // Initialize dark mode from localStorage (default: light)
   useEffect(() => {
@@ -45,14 +72,24 @@ const DashboardLayout = () => {
     }
   }, [darkMode]);
 
-      const handleLogout = () => {
-      Helpers.removeItem("token");
-      Helpers.removeItem("user");
-      Helpers.removeItem("darkMode"); // Clear dark mode preference on logout
-      Helpers.toast("success", "Logged Out Successfully");
-      let logOutRoute = userRole === "user" ? "/login" : "/admin-login";
-      navigate(logOutRoute);
+  // Persist language preference to localStorage
+  useEffect(() => {
+    try {
+      Helpers.setItem("language", language);
+    } catch (e) {
+      // Fail silently if localStorage is not accessible
     }
+  }, [language]);
+
+  const handleLogout = () => {
+    Helpers.removeItem("token");
+    Helpers.removeItem("user");
+    Helpers.removeItem("darkMode"); // Clear dark mode preference on logout
+    Helpers.removeItem("language"); // Clear language preference on logout
+    Helpers.toast("success", "Logged Out Successfully");
+    let logOutRoute = userRole === "user" ? "/login" : "/admin-login";
+    navigate(logOutRoute);
+  };
   // Close dropdown when clicking outside
   useEffect(() => {
     if (!isUserDropdownOpen && !isNotificationOpen) return;
@@ -180,7 +217,7 @@ const DashboardLayout = () => {
       );
     }
 
-    // ✅ NORMAL LINK (UNCHANGED)
+    // ✅ NORMAL LINK WITH LOCALIZED LABEL
     return (
       <li key={index} className="relative">
         <NavLink
@@ -199,7 +236,7 @@ const DashboardLayout = () => {
           }
         >
           {link.icon}
-          <span>{link.name}</span>
+          <span>{getLocalizedRouteName(link.name)}</span>
         </NavLink>
 
         {location.pathname === fullPath && (
@@ -519,7 +556,9 @@ const DashboardLayout = () => {
               <div className="grid grid-cols-12 h-full">
                 <div className="col-span-12 h-full">
                   <DarkModeContext.Provider value={darkMode}>
-                    <Outlet />
+                    <LanguageContext.Provider value={language}>
+                      <Outlet />
+                    </LanguageContext.Provider>
                   </DarkModeContext.Provider>
                 </div>
               </div>

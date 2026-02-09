@@ -1,48 +1,49 @@
 import React, { useContext, useState } from "react";
 import { Cloud, Leaf, Wind, Info, Plus, Mic, ArrowRight } from "lucide-react";
 import Helpers from "../../../config/Helpers";
-import { DarkModeContext } from "../../DashboardLayout";
+import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
 
 const UserDashboard = () => {
   const authUser = Helpers.getAuthUser();
   const darkMode = useContext(DarkModeContext);
+  const language = useContext(LanguageContext);
   const [message, setMessage] = useState("");
-
+  
   const cards = [
     {
-      title: "Weather",
+      title: language === "urdu" ? "موسم" : "Weather",
       icon: Cloud,
-      value: "Rainy 25°C"
+      value: language === "urdu" ? "بارش 25°С" : "Rainy 25°C"
     },
     {
-      title: "Soil Moisture",
+      title: language === "urdu" ? "مٹی کی نمی" : "Soil Moisture",
       icon: Leaf,
-      value: "65% Good"
+      value: language === "urdu" ? "65٪ بہترین" : "65% Good"
     },
     {
-      title: "Air Humidity",
+      title: language === "urdu" ? "ہوا میں نمی" : "Air Humidity",
       icon: Wind,
-      value: "72% High"
+      value: language === "urdu" ? "72٪ زیادہ" : "72% High"
     },
     {
-      title: "Plant Health",
+      title: language === "urdu" ? "پودوں کی صحت" : "Plant Health",
       icon: Leaf,
-      value: "Good"
+      value: language === "urdu" ? "بہترین" : "Good"
     },
     {
-      title: "Recommendation",
+      title: language === "urdu" ? "تجویز" : "Recommendation",
       icon: Info,
-      value: "Water Now"
+      value: language === "urdu" ? "ابھی پانی دیں" : "Water Now"
     }
   ];
 
   return (
     <div className="relative min-h-[calc(100vh-200px)] pb-24">
       <p className={`transition-colors duration-300 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-        Welcome back, {authUser?.name ?? "User"}
+        {language === "urdu" ? "واپس آنے پر خوش آمدید،" : "Welcome back,"} {authUser?.name ?? (language === "urdu" ? "صارف" : "User")}
       </p>
       <h1 className={`text-4xl font-bold mt-2 mb-5 transition-colors duration-300 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-        Dashboard
+        {language === "urdu" ? "ڈیش بورڈ" : "Dashboard"}
       </h1>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mr-4">
         {cards.map((card, index) => {
@@ -70,10 +71,10 @@ const UserDashboard = () => {
       }`}>
         <div className="border-r border-green-500 h-auto min-h-[60px] sm:min-h-[80px] md:min-h-[96px] border-2 flex-shrink-0"></div>
         <div className="flex flex-col justify-center min-w-0 flex-1">
-          <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-green-500 font-semibold mb-1 sm:mb-2">Daily Advice</h2>
+          <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-green-500 font-semibold mb-1 sm:mb-2">{language === "urdu" ? "روزانہ تجویز" : "Daily Advice"}</h2>
           <p className={`text-sm sm:text-base md:text-lg lg:text-xl leading-tight sm:leading-snug md:leading-normal break-words transition-colors duration-300 ${
             darkMode ? 'text-gray-300' : 'text-gray-400'
-          }`}>Rotate Crops Today & Don't give water today.</p>
+          }`}>{language === "urdu" ? "آج فصلیں گھمائیں اور آج پانی نہ دیں۔" : "Rotate Crops Today & Don't give water today."}</p>
         </div>
       </div>
 
