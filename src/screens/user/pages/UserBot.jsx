@@ -88,22 +88,30 @@ const UserBot = () => {
       return;
     }
     try {
-      const response = await axios.get(
-        `${Helpers.apiUrl}userdata/get-soil-moisture`,
-        Helpers.getAuthHeaders()
-      );
-      const moisture = response.data?.success ? response.data.moisture : 65;
-      const label = language === "urdu" ? `مٹی کی نمی: ${moisture}%` : `Soil: ${moisture}%`;
+      const response = await axios.get(`${Helpers.apiUrl}iot/status`, Helpers.getAuthHeaders());
+      let statusValue;
+      if (response.data.success && response.data.data?.status) {
+        statusValue = response.data.data.status;
+      } else {
+        statusValue = language === "urdu" ? "ڈیٹا دستیاب نہیں" : "Data not available";
+      }
+      const label = language === "urdu" ? `مٹی کی نمی: ${statusValue}` : `Soil: ${statusValue}`;
       const contextData = language === "urdu"
-        ? `[مٹی کی نمی: ${moisture}% (IoT سے موصول)]`
-        : `[Soil Moisture: ${moisture}% (from IoT)]`;
+        ? `[مٹی کی نمی: ${statusValue} (IoT سے موصول)]`
+        : `[Soil Moisture: ${statusValue} (from IoT)]`;
       setAttachments((prev) => [...prev, { id: `soil-${Date.now()}`, type: "soil", label, data: contextData }]);
     } catch (error) {
       console.error("Soil moisture fetch error:", error);
-      const label = language === "urdu" ? "مٹی کی نمی: 65%" : "Soil: 65%";
+      let message;
+      if (error.response?.status === 404 && error.response?.data?.detail === "IoT device URL not configured") {
+        message = language === "urdu" ? "IoT ڈیوائس یو آر ایل کنفیگر نہیں کیا گیا" : "IoT device URL not configured";
+      } else {
+        message = language === "urdu" ? "مٹی کی نمی حاصل کرنے میں خرابی" : "Error fetching soil moisture";
+      }
+      const label = language === "urdu" ? `مٹی کی نمی: ${message}` : `Soil: ${message}`;
       const contextData = language === "urdu"
-        ? "[مٹی کی نمی: 65% (IoT سے موصول)]"
-        : "[Soil Moisture: 65% (from IoT)]";
+        ? `[مٹی کی نمی: ${message} (IoT سے موصول)]`
+        : `[Soil Moisture: ${message} (from IoT)]`;
       setAttachments((prev) => [...prev, { id: `soil-${Date.now()}`, type: "soil", label, data: contextData }]);
     }
   };

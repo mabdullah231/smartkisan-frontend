@@ -167,84 +167,54 @@ const DashboardLayout = () => {
                     }
                   `}</style>
                     <ul className="space-y-2">
-                      {/* {navigationItems
-                      .filter((link) => !link.hidden)
-                      .map((link, index) => {
-                        const fullPath = getFullPath(userRole, link.path);
-                        return (
-                          <li key={index} className="relative">
-                            <NavLink
-                              to={fullPath}
-                              onClick={() => setSidebarOpen(false)}
-                              className={({ isActive }) =>
-                                `flex items-center space-x-3 text-sm py-2 pl-4 pr-1 transition relative ${
-                                  isActive
+
+                      {navigationItems
+                        .filter(link => !link.hidden)
+                        .map((link, index) => {
+                          const fullPath = getFullPath(userRole, link.path);
+                          const isParentActive = location.pathname.startsWith(fullPath);
+
+                          // 🔽 IF DROPDOWN
+                          if (link.children?.length) {
+                            return (
+                              <BotSidebarDropdown
+                                key={index}
+                                link={link}
+                                basePath={fullPath}
+                                darkMode={darkMode}
+                                isActive={isParentActive}
+                                closeSidebar={() => setSidebarOpen(false)}
+                              />
+                            );
+                          }
+
+                          // ✅ NORMAL LINK WITH LOCALIZED LABEL
+                          return (
+                            <li key={index} className="relative">
+                              <NavLink
+                                to={fullPath}
+                                onClick={() => setSidebarOpen(false)}
+                                className={({ isActive }) =>
+                                  `flex items-center space-x-3 text-sm py-2 pl-4 pr-1 transition relative ${isActive
                                     ? darkMode
                                       ? "bg-green-900 text-green-400 font-medium rounded-l-lg"
                                       : "bg-green-50 text-green-600 font-medium rounded-l-lg"
                                     : darkMode
                                       ? "text-gray-300 hover:bg-gray-700 rounded-lg"
                                       : "text-gray-700 hover:bg-gray-50 rounded-lg"
-                                }`
-                              }
-                            >
-                              {link.icon}
-                              <span>{link.name}</span>
-                            </NavLink>
-                            {location.pathname === fullPath && (
-                              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-green-600 rounded-l"></div>
-                            )}
-                          </li>
-                        );
-                      })} */}
-{navigationItems
-  .filter(link => !link.hidden)
-  .map((link, index) => {
-    const fullPath = getFullPath(userRole, link.path);
-    const isParentActive = location.pathname.startsWith(fullPath);
+                                  }`
+                                }
+                              >
+                                {link.icon}
+                                <span>{getLocalizedRouteName(link.name)}</span>
+                              </NavLink>
 
-    // 🔽 IF DROPDOWN
-    if (link.children?.length) {
-      return (
-        <BotSidebarDropdown
-          key={index}
-          link={link}
-          basePath={fullPath}
-          darkMode={darkMode}
-          isActive={isParentActive}
-          closeSidebar={() => setSidebarOpen(false)}
-        />
-      );
-    }
-
-    // ✅ NORMAL LINK WITH LOCALIZED LABEL
-    return (
-      <li key={index} className="relative">
-        <NavLink
-          to={fullPath}
-          onClick={() => setSidebarOpen(false)}
-          className={({ isActive }) =>
-            `flex items-center space-x-3 text-sm py-2 pl-4 pr-1 transition relative ${
-              isActive
-                ? darkMode
-                  ? "bg-green-900 text-green-400 font-medium rounded-l-lg"
-                  : "bg-green-50 text-green-600 font-medium rounded-l-lg"
-                : darkMode
-                  ? "text-gray-300 hover:bg-gray-700 rounded-lg"
-                  : "text-gray-700 hover:bg-gray-50 rounded-lg"
-            }`
-          }
-        >
-          {link.icon}
-          <span>{getLocalizedRouteName(link.name)}</span>
-        </NavLink>
-
-        {location.pathname === fullPath && (
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-green-600 rounded-l" />
-        )}
-      </li>
-    );
-  })}
+                              {location.pathname === fullPath && (
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-green-600 rounded-l" />
+                              )}
+                            </li>
+                          );
+                        })}
 
 
                     </ul>
@@ -299,14 +269,14 @@ const DashboardLayout = () => {
                           }}
                         />
                         <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm transition-colors duration-300 select-none relative z-10 ${language === "english"
-                            ? "text-white"
-                            : darkMode ? "text-gray-400" : "text-gray-600"
+                          ? "text-white"
+                          : darkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
                           English
                         </span>
                         <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm transition-colors duration-300 select-none relative z-10 ${language === "urdu"
-                            ? "text-white"
-                            : darkMode ? "text-gray-400" : "text-gray-600"
+                          ? "text-white"
+                          : darkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
                           اُرْدُو
                         </span>
@@ -332,14 +302,14 @@ const DashboardLayout = () => {
                           }}
                         />
                         <div className={`p-1 sm:p-1.5 rounded-full transition-colors duration-300 relative z-10 ${!darkMode
-                            ? "text-white"
-                            : darkMode ? "text-gray-400" : "text-gray-600"
+                          ? "text-white"
+                          : darkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
                           <Sun size={14} className="sm:w-4 sm:h-4" />
                         </div>
                         <div className={`p-1 sm:p-1.5 rounded-full transition-colors duration-300 relative z-10 ${darkMode
-                            ? "text-white"
-                            : darkMode ? "text-gray-400" : "text-gray-600"
+                          ? "text-white"
+                          : darkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
                           <Moon size={14} className="sm:w-4 sm:h-4" />
                         </div>
@@ -496,14 +466,14 @@ const DashboardLayout = () => {
                                   }}
                                 />
                                 <span className={`flex-1 px-3 py-1.5 rounded-full text-sm text-center transition-colors duration-300 select-none relative z-10 ${language === "english"
-                                    ? "text-white"
-                                    : "text-gray-600"
+                                  ? "text-white"
+                                  : "text-gray-600"
                                   }`}>
                                   English
                                 </span>
                                 <span className={`flex-1 px-3 py-1.5 rounded-full text-sm text-center transition-colors duration-300 select-none relative z-10 ${language === "urdu"
-                                    ? "text-white"
-                                    : "text-gray-600"
+                                  ? "text-white"
+                                  : "text-gray-600"
                                   }`}>
                                   اُرْدُو
                                 </span>

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import axios from "axios";
-import TextInput from "../../components/common/form-fields/TextInput";
 import OTPInput from "../../components/common/form-fields/OTPInput";
 import Dropdown from "../../components/common/form-fields/Dropdown";
 import Helpers from "../../config/Helpers";
@@ -398,44 +397,64 @@ const Register = () => {
                     </div>
 
                     {/* Phone Number Input */}
-                    <TextInput
-                      label="Phone Number"
-                      name="phone"
-                      type="tel"
-                      placeholder="0300-0000000"
-                      value={formData.phone}
-                      onChange={handleChange}
-                    />
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        placeholder="0300-0000000"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
 
                     {/* Full Name Input */}
-                    <TextInput
-                      label="Full Name"
-                      name="fullName"
-                      type="text"
-                      placeholder="Enter your full name"
-                      value={formData.fullName}
-                      onChange={handleChange}
-                    />
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        name="fullName"
+                        placeholder="Enter your full name"
+                        value={formData.fullName}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
 
                     {/* Password Input */}
-                    <TextInput
-                      label="Password"
-                      name="password"
-                      type="password"
-                      placeholder="Enter your password"
-                      value={formData.password}
-                      onChange={handleChange}
-                    />
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Password
+                      </label>
+                      <input
+                        type="password"
+                        name="password"
+                        placeholder="Enter your password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
 
                     {/* Confirm Password Input */}
-                    <TextInput
-                      label="Confirm Password"
-                      name="confirmPassword"
-                      type="password"
-                      placeholder="Confirm your password"
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                    />
+                    <div className="w-full">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Confirm Password
+                      </label>
+                      <input
+                        type="password"
+                        name="confirmPassword"
+                        placeholder="Confirm your password"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
                   </>
                 )}
 

@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import axios from "axios";
-import TextInput from "../../components/common/form-fields/TextInput";
 import Helpers from "../../config/Helpers";
 
 const AdminLogin = () => {
@@ -97,14 +96,19 @@ const AdminLogin = () => {
           </h2>
 
           <form onSubmit={handleLogin} className="grid gap-4">
-            <TextInput
-              label="Phone Number"
-              name="phone"
-              type="tel"
-              placeholder="0300-0000000"
-              value={formData.phone}
-              onChange={handleChange}
-            />
+            <div className="w-full">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                placeholder="0300-0000000"
+                value={formData.phone}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
