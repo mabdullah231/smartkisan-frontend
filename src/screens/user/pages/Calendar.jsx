@@ -1,13 +1,53 @@
-import React, { useContext, useState, useRef, useEffect } from 'react'
+import React, { useContext, useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DarkModeContext, LanguageContext } from '../../DashboardLayout'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
+import axios from 'axios'
+import Helpers from '../../../config/Helpers'
 
 const UserCalendar = () => {
   const darkMode = useContext(DarkModeContext)
   const language = useContext(LanguageContext)
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const [suggestionRows, setSuggestionRows] = useState([])
   const modalRef = useRef(null)
+
+  const loadCalendarEvents = useCallback(async (dateInfo) => {
+    const start = dateInfo.startStr.slice(0, 10)
+    const endExclusive = new Date(dateInfo.endStr)
+    endExclusive.setDate(endExclusive.getDate() - 1)
+    const ey = endExclusive.getFullYear()
+    const em = String(endExclusive.getMonth() + 1).padStart(2, '0')
+    const ed = String(endExclusive.getDate()).padStart(2, '0')
+    const endInclusive = `${ey}-${em}-${ed}`
+    try {
+      const res = await axios.get(`${Helpers.apiUrl}suggestions/me/calendar`, {
+        params: { start_date: start, end_date: endInclusive },
+        ...Helpers.getAuthHeaders(),
+      })
+      if (res.data.success && Array.isArray(res.data.data)) {
+        setSuggestionRows(res.data.data)
+      } else {
+        setSuggestionRows([])
+      }
+    } catch (e) {
+      console.error('Calendar suggestions failed', e)
+      setSuggestionRows([])
+    }
+  }, [])
+
+  const calendarEvents = useMemo(
+    () =>
+      suggestionRows.map((item) => ({
+        title: language === 'urdu' ? item.ur_title : item.eng_title,
+        date: item.advice_date,
+        extendedProps: {
+          description:
+            language === 'urdu' ? item.ur_description : item.eng_description,
+        },
+      })),
+    [suggestionRows, language]
+  )
 
   // Close modal on outside click
   useEffect(() => {
@@ -35,21 +75,13 @@ const UserCalendar = () => {
           plugins={[dayGridPlugin]}
           initialView="dayGridMonth"
           height="100%"
+          datesSet={(dateInfo) => {
+            loadCalendarEvents(dateInfo)
+          }}
           eventClick={(info) => {
             setSelectedEvent(info.event)
           }}
-          events={[
-            {
-              title: language === "urdu" ? 'تقریب 1' : 'event 1',
-              date: '2026-01-02',
-              description: language === "urdu" ? 'تقریب 1 کی مختصر تفصیل۔' : 'This is a short description for event 1.'
-            },
-            {
-              title: language === "urdu" ? 'تقریب 2' : 'event 2',
-              date: '2026-01-04',
-              description: language === "urdu" ? 'یہاں تقریب 2 کی ایک دو سطروں کی تفصیل ہے۔' : 'Another one or two liner description goes here.'
-            }
-          ]}
+          events={calendarEvents}
         />
       </div>
 

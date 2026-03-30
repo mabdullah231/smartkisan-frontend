@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from "react";
-import { User, Cpu, Save, Key } from "lucide-react";
+import { User, Cpu, Save, Key, MapPin } from "lucide-react";
 import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
 import TextInput from "../../../components/common/form-fields/TextInput";
 import Helpers from "../../../config/Helpers";
@@ -29,11 +29,14 @@ const UserSettings = () => {
 
   // IoT URL state
   const [iotUrl, setIotUrl] = useState("");
+  const [farmLatitude, setFarmLatitude] = useState(null);
+  const [farmLongitude, setFarmLongitude] = useState(null);
 
   // Loading states
   const [savingProfile, setSavingProfile] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [savingIot, setSavingIot] = useState(false);
+  const [capturingFarmLocation, setCapturingFarmLocation] = useState(false);
 
   // // Initialize forms with authUser data
   // useEffect(() => {
@@ -54,14 +57,27 @@ const UserSettings = () => {
         Helpers.getAuthHeaders()
       );
       if (response.data.success) {
-        const { full_name, phone, iot_url } = response.data.data;
+        const { full_name, phone, iot_url, farm_latitude, farm_longitude } = response.data.data;
         setProfileForm({
           name: full_name || "",
           phone: phone || "",
         });
         setIotUrl(iot_url || "");
+        setFarmLatitude(
+          farm_latitude != null && farm_latitude !== "" ? Number(farm_latitude) : null
+        );
+        setFarmLongitude(
+          farm_longitude != null && farm_longitude !== "" ? Number(farm_longitude) : null
+        );
         // Update localStorage as well
-        const updatedUser = { ...authUser, name: full_name, phone: phone, iot_url };
+        const updatedUser = {
+          ...authUser,
+          name: full_name,
+          phone: phone,
+          iot_url,
+          farm_latitude: farm_latitude ?? null,
+          farm_longitude: farm_longitude ?? null,
+        };
         localStorage.setItem("authUser", JSON.stringify(updatedUser));
       }
     } catch (error) {
@@ -153,6 +169,79 @@ const UserSettings = () => {
     } finally {
       setChangingPassword(false);
     }
+  };
+
+  const farmLocationDisplay =
+    farmLatitude != null && farmLongitude != null
+      ? `${farmLatitude.toFixed(5)}, ${farmLongitude.toFixed(5)}`
+      : "";
+
+  const handleCaptureFarmLocation = () => {
+    if (!navigator.geolocation) {
+      Helpers.toast(
+        "error",
+        language === "urdu"
+          ? "براؤزر مقام کی سپورٹ نہیں کرتا"
+          : "Geolocation is not supported by this browser"
+      );
+      return;
+    }
+    setCapturingFarmLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        try {
+          const response = await axios.post(
+            `${Helpers.apiUrl}settings/user/settings`,
+            {
+              type: "farm_location",
+              latitude: lat,
+              longitude: lon,
+            },
+            Helpers.getAuthHeaders()
+          );
+          if (response.data.success) {
+            setFarmLatitude(lat);
+            setFarmLongitude(lon);
+            const updatedUser = {
+              ...Helpers.getAuthUser(),
+              farm_latitude: lat,
+              farm_longitude: lon,
+            };
+            localStorage.setItem("authUser", JSON.stringify(updatedUser));
+            Helpers.toast(
+              "success",
+              language === "urdu"
+                ? "فارم کا مقام محفوظ ہو گیا"
+                : "Farm location saved successfully"
+            );
+          }
+        } catch (error) {
+          console.error("Error saving farm location:", error);
+          Helpers.toast(
+            "error",
+            error.response?.data?.detail ||
+              (language === "urdu"
+                ? "مقام محفوظ کرنے میں ناکامی"
+                : "Failed to save farm location")
+          );
+        } finally {
+          setCapturingFarmLocation(false);
+        }
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setCapturingFarmLocation(false);
+        Helpers.toast(
+          "error",
+          language === "urdu"
+            ? "مقام تک رسائی مسترد یا دستیاب نہیں"
+            : "Location access denied or unavailable"
+        );
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   // Save IoT URL
@@ -369,6 +458,61 @@ const UserSettings = () => {
                   ? "یہ یو آر ایل استعمال ہو گا IoT ڈیوائس سے ڈیٹا لینے کے لیے"
                   : "This URL will be used to fetch data from your IoT device"}
               </p>
+
+              <div
+                className={`rounded-lg p-5 ${
+                  darkMode ? "bg-gray-700/50" : "bg-gray-50"
+                }`}
+              >
+                <h2
+                  className={`text-lg font-semibold mb-4 flex items-center gap-2 ${
+                    darkMode ? "text-gray-200" : "text-gray-800"
+                  }`}
+                >
+                  <MapPin size={20} />
+                  {language === "urdu" ? "فارم کا مقام" : "Farm location"}
+                </h2>
+                <TextInput
+                  label={language === "urdu" ? "عرض بلد، طول بلد" : "Latitude, longitude"}
+                  placeholder={
+                    language === "urdu"
+                      ? "ابھی تک کوئی مقام محفوظ نہیں"
+                      : "No location saved yet"
+                  }
+                  value={farmLocationDisplay}
+                  onChange={() => {}}
+                  darkMode={darkMode}
+                  readOnly
+                />
+                <p
+                  className={`text-xs mt-2 mb-4 ${
+                    darkMode ? "text-gray-400" : "text-gray-500"
+                  }`}
+                >
+                  {language === "urdu"
+                    ? "ڈیش بورڈ پر موسم کے لیے یہی مقام استعمال ہو گا۔ نئے مقام کے لیے دوبارہ بٹن دبائیں۔"
+                    : "Weather on the dashboard uses these coordinates. Use the button again to update."}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCaptureFarmLocation}
+                  disabled={capturingFarmLocation}
+                  className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
+                    capturingFarmLocation
+                      ? "bg-green-400 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700"
+                  } text-white shadow-sm`}
+                >
+                  <MapPin size={18} />
+                  {capturingFarmLocation
+                    ? language === "urdu"
+                      ? "مقام لیا جا رہا ہے..."
+                      : "Getting location..."
+                    : language === "urdu"
+                    ? "فارم کا مقام شامل کریں"
+                    : "Add farm location"}
+                </button>
+              </div>
 
               <div className="flex justify-end pt-4">
                 <button

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { Cloud, Leaf, Wind, Info, Plus, Mic, ArrowRight } from "lucide-react";
 import Helpers from "../../../config/Helpers";
 import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
@@ -17,6 +17,9 @@ const UserDashboard = () => {
     error: null,
     loading: true,
   });
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(true);
+  const triedSuggestionRefresh = useRef(false);
 
   // Status to percentage mapping (rough estimates)
   const statusPercentage = {
@@ -37,26 +40,88 @@ const UserDashboard = () => {
   };
 
   useEffect(() => {
-    // Try to get user's current location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
-          });
-          console.log(position);
-        },
-        (error) => {
-          console.error("Geolocation error:", error);
-          // Use default location (Multan)
-          setLocation({ lat: 30.19, lon: 71.47 });
+    const applyFallbackLocation = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setLocation({
+              lat: position.coords.latitude,
+              lon: position.coords.longitude,
+            });
+          },
+          () => {
+            setLocation({ lat: 30.19, lon: 71.47 });
+          }
+        );
+      } else {
+        setLocation({ lat: 30.19, lon: 71.47 });
+      }
+    };
+
+    const loadLocation = async () => {
+      try {
+        const response = await axios.get(
+          `${Helpers.apiUrl}settings/user/profile`,
+          Helpers.getAuthHeaders()
+        );
+        if (response.data.success && response.data.data) {
+          const { farm_latitude, farm_longitude } = response.data.data;
+          if (
+            farm_latitude != null &&
+            farm_longitude != null &&
+            !Number.isNaN(Number(farm_latitude)) &&
+            !Number.isNaN(Number(farm_longitude))
+          ) {
+            setLocation({
+              lat: Number(farm_latitude),
+              lon: Number(farm_longitude),
+            });
+            return;
+          }
         }
-      );
-    } else {
-      // Browser doesn't support geolocation
-      setLocation({ lat: 30.19, lon: 71.47 });
-    }
+      } catch (e) {
+        console.error("Could not load saved farm location:", e);
+      }
+      applyFallbackLocation();
+    };
+
+    loadLocation();
+  }, []);
+
+  useEffect(() => {
+    const loadSuggestion = async () => {
+      setSuggestionLoading(true);
+      try {
+        const res = await axios.get(
+          `${Helpers.apiUrl}suggestions/me`,
+          Helpers.getAuthHeaders()
+        );
+        if (res.data.success && res.data.data) {
+          setSuggestion(res.data.data);
+          return;
+        }
+        if (!triedSuggestionRefresh.current) {
+          triedSuggestionRefresh.current = true;
+          try {
+            const refresh = await axios.post(
+              `${Helpers.apiUrl}suggestions/me/refresh`,
+              {},
+              Helpers.getAuthHeaders()
+            );
+            if (refresh.data.success && refresh.data.data) {
+              setSuggestion(refresh.data.data);
+            }
+          } catch {
+            /* no farm location or generation failed */
+          }
+        }
+      } catch (e) {
+        console.error("Suggestion fetch failed:", e);
+      } finally {
+        setSuggestionLoading(false);
+      }
+    };
+    loadSuggestion();
   }, []);
 
   const fetchWeather = async () => {
@@ -157,6 +222,32 @@ const UserDashboard = () => {
     return language === "urdu" ? "ڈیٹا نہیں" : "No data";
   };
 
+  const recommendationDisplay = () => {
+    if (suggestionLoading) {
+      return language === "urdu" ? "لوڈ ہو رہا ہے" : "Loading";
+    }
+    if (!suggestion) {
+      return language === "urdu"
+        ? "تجویز نہیں۔ فارم کا مقام سیٹ کریں۔"
+        : "No suggestion yet. Set farm location in Settings.";
+    }
+    return language === "urdu" ? suggestion.ur_title : suggestion.eng_title;
+  };
+
+  const dailyAdviceDisplay = () => {
+    if (suggestionLoading) {
+      return language === "urdu" ? "لوڈ ہو رہا ہے…" : "Loading…";
+    }
+    if (!suggestion) {
+      return language === "urdu"
+        ? "روزانہ تجویز یہاں دکھائی دے گی جب آپ فارم کا مقام محفوظ کر لیں گے اور تجویز تیار ہو جائے گی۔"
+        : "Daily advice will appear here once your farm location is saved and a suggestion is generated.";
+    }
+    return language === "urdu"
+      ? suggestion.ur_description
+      : suggestion.eng_description;
+  };
+
   const cards = [
     {
       title: language === "urdu" ? "موسم" : "Weather",
@@ -205,7 +296,7 @@ const UserDashboard = () => {
     {
       title: language === "urdu" ? "تجویز" : "Recommendation",
       icon: Info,
-      value: language === "urdu" ? "ابھی پانی دیں" : "Water Now",
+      value: recommendationDisplay(),
     },
   ];
 
@@ -273,9 +364,7 @@ const UserDashboard = () => {
               darkMode ? "text-gray-300" : "text-gray-400"
             }`}
           >
-            {language === "urdu"
-              ? "آج فصلیں گھمائیں اور آج پانی نہ دیں۔"
-              : "Rotate Crops Today & Don't give water today."}
+            {dailyAdviceDisplay()}
           </p>
         </div>
       </div>
