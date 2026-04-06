@@ -1,5 +1,5 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
-import { Plus, Mic, ArrowRight, Bot, User, ChevronDown, MessageSquare, X, Cloud, Droplets, Image } from "lucide-react";
+import { Plus, Mic, ArrowRight, Bot, User, ChevronDown, MessageSquare, X, Cloud, Droplets, Image, Volume2 } from "lucide-react";
 import Helpers from "../../../config/Helpers";
 import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
 import axios from "axios";
@@ -22,7 +22,13 @@ const UserBot = () => {
   const [showPlusOptions, setShowPlusOptions] = useState(false);
   // Each attachment: { id, type: 'weather'|'soil'|'image', label, data }
   const [attachments, setAttachments] = useState([]);
-
+  const [isListening, setIsListening] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
+  const [streamingId, setStreamingId] = useState(null);
+  const recognitionRef = useRef(null);
+  const audioRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
   const messagesEndRefMobile = useRef(null);
   const navigate = useNavigate();
@@ -30,7 +36,195 @@ const UserBot = () => {
   const chatContainerRefMobile = useRef(null);
   const recentChatsRef = useRef(null);
 
-  // ─── Attachment handlers ──────────────────────────────────────────────────────
+// ─── WAV encoder helper ───────────────────────────────────────────────────────
+  const audioBufferToWav = (buffer) => {
+    const numChannels = 1;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const samples = buffer.getChannelData(0);
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = samples.length * bytesPerSample;
+    const bufferOut = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(bufferOut);
+
+    const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+
+    return new Blob([bufferOut], { type: 'audio/wav' });
+  };
+
+  // ─── STT Handler ─────────────────────────────────────────────────────────────────
+  const handleStartListening = async () => {
+    if (isListening) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+
+        // Create audio blob
+        const rawBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+        try {
+          // Convert to WAV via AudioContext for Azure compatibility
+          const arrayBuffer = await rawBlob.arrayBuffer();
+          const audioCtx = new AudioContext({ sampleRate: 16000 });
+          const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+          const wavBlob = audioBufferToWav(decoded);
+          await audioCtx.close();
+
+          const formData = new FormData();
+          formData.append('audio_file', wavBlob, 'recording.wav');
+          formData.append('language', language === "urdu" ? "ur-IN" : "en-US");
+
+          const response = await axios.post(
+            `${Helpers.apiUrl}azure/stt`,
+            formData,
+            {
+              ...Helpers.getAuthHeaders(),
+              headers: {
+                ...Helpers.getAuthHeaders().headers,
+                'Content-Type': 'multipart/form-data'
+              }
+            }
+          );
+
+          if (response.data.text) {
+            setMessage(prev => prev + response.data.text + ' ');
+          }
+        } catch (error) {
+          console.error("STT Error:", error);
+          Helpers.toast("error", language === "urdu" ? "آواز کی سنی نہیں گئی" : "Could not recognize speech");
+        }
+
+        setIsListening(false);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsListening(true);
+
+    } catch (error) {
+      console.error("Microphone access error:", error);
+      Helpers.toast("error", language === "urdu" ? "مائیکروفون تک رسائی نہیں ملی" : "Could not access microphone");
+      setIsListening(false);
+    }
+  };
+
+  // ─── TTS Handler ─────────────────────────────────────────────────────────────────
+  const handleSpeak = async (rawText, messageId) => {
+    if (speakingMessageId === messageId) {
+      // Stop current audio if playing
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    try {
+      setSpeakingMessageId(messageId);
+
+      // Clean the text (remove HTML and emojis)
+      const tmp = document.createElement('div');
+      tmp.innerHTML = DOMPurify.sanitize(rawText);
+      let text = tmp.innerText || tmp.textContent || '';
+      text = text.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+
+      if (!text) {
+        setSpeakingMessageId(null);
+        return;
+      }
+
+      // Detect language from text content
+      const containsUrdu = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+      const voiceLang = containsUrdu ? "ur-PK" : "en-US";
+
+      const response = await axios.post(
+        `${Helpers.apiUrl}azure/tts`,
+        {
+          text: text,
+          language: voiceLang
+        },
+        {
+          headers: Helpers.getAuthHeaders().headers,
+          responseType: 'blob'
+        }
+      );
+
+      // Create audio element and play
+      const audioBlob = new Blob([response.data], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.onended = () => {
+        setSpeakingMessageId(null);
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+      };
+
+      audioRef.current.onerror = () => {
+        setSpeakingMessageId(null);
+        URL.revokeObjectURL(audioUrl);
+        audioRef.current = null;
+        Helpers.toast("error", language === "urdu" ? "آڈیو چلانے میں خرابی" : "Error playing audio");
+      };
+
+      await audioRef.current.play();
+
+    } catch (error) {
+      console.error("TTS Error:", error);
+      setSpeakingMessageId(null);
+      Helpers.toast("error", language === "urdu" ? "ٹیکسٹ ٹو اسپیچ میں خرابی" : "Text-to-speech error");
+    }
+  };
 
   const removeAttachment = (id) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -162,7 +356,7 @@ const UserBot = () => {
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, botPlaceholder]);
-
+      setStreamingId(botId);
       const authHeaders = Helpers.getAuthHeaders().headers;
       const targetChatId = paramChatId || chatId;
 
@@ -213,6 +407,7 @@ const UserBot = () => {
           ));
         }
       }
+      setStreamingId(null);
 
       await getRecentChats();
 
@@ -223,6 +418,7 @@ const UserBot = () => {
 
     } catch (error) {
       console.error(error);
+      setStreamingId(null);
       setMessages(prev => prev.map(m =>
         m.id === botId ? { ...m, text: 'Error generating response' } : m
       ));
@@ -252,7 +448,7 @@ const UserBot = () => {
         const fullMessages = [];
         response.data.chat.forEach(msg => {
           if (msg.question) fullMessages.push({ id: msg.id + '-q', text: msg.question, sender: 'user' });
-          if (msg.answer)   fullMessages.push({ id: msg.id + '-a', text: msg.answer,   sender: 'bot' });
+          if (msg.answer) fullMessages.push({ id: msg.id + '-a', text: msg.answer, sender: 'bot' });
         });
         setMessages(fullMessages);
         setChatId(id);
@@ -320,7 +516,7 @@ const UserBot = () => {
   const getRecentChats = async () => {
     try {
       const response = await axios.get(`${Helpers.apiUrl}chats`, Helpers.getAuthHeaders());
-      setRecentChats(response.data.chats);
+      setRecentChats(response.data.chats || []);
     } catch (error) {
       console.log("Error Fetching Recent Chats", error);
       Helpers.toast("error", "Couldn't Fetch Recent Chats");
@@ -329,17 +525,6 @@ const UserBot = () => {
 
   useEffect(() => {
     getRecentChats();
-  }, []);
-
-  useEffect(() => {
-    const desktopContainer = chatContainerRef.current;
-    const mobileContainer = chatContainerRefMobile.current;
-    if (desktopContainer) { desktopContainer.addEventListener('scroll', handleScroll); handleScroll(); }
-    if (mobileContainer)  { mobileContainer.addEventListener('scroll', handleScroll);  handleScroll(); }
-    return () => {
-      desktopContainer?.removeEventListener('scroll', handleScroll);
-      mobileContainer?.removeEventListener('scroll', handleScroll);
-    };
   }, []);
 
   // ─── Badge helpers (plain functions, not components) ─────────────────────────
@@ -358,7 +543,7 @@ const UserBot = () => {
 
   const getBadgeIcon = (type) => {
     if (type === "weather") return <Cloud size={11} className="flex-shrink-0" />;
-    if (type === "soil")    return <Droplets size={11} className="flex-shrink-0" />;
+    if (type === "soil") return <Droplets size={11} className="flex-shrink-0" />;
     return <Image size={11} className="flex-shrink-0" />;
   };
 
@@ -368,35 +553,35 @@ const UserBot = () => {
   return (
     <>
       <style jsx>{`
-        @keyframes messageIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.95); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes slideIn {
-          from { transform: translateX(-100%); }
-          to   { transform: translateX(0); }
-        }
-        @keyframes dropdownIn {
-          from { opacity: 0; transform: translateY(8px) scale(0.96); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .animate-message-in  { animation: messageIn  0.3s ease-out forwards; }
-        .animate-fade-in     { animation: fadeIn     0.3s ease-out forwards; }
-        .animate-slide-in    { animation: slideIn    0.3s ease-out forwards; }
-        .animate-dropdown-in { animation: dropdownIn 0.15s ease-out forwards; }
-        .shadow-transition   { transition: box-shadow 0.3s ease; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .slim-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(156,163,175,0.4) transparent; }
-        .slim-scrollbar::-webkit-scrollbar { width: 4px; }
-        .slim-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .slim-scrollbar::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.4); border-radius: 2px; }
-        .slim-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(156,163,175,0.6); }
-      `}</style>
+          @keyframes messageIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.95); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to   { transform: translateX(0); }
+          }
+          @keyframes dropdownIn {
+            from { opacity: 0; transform: translateY(8px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          .animate-message-in  { animation: messageIn  0.3s ease-out forwards; }
+          .animate-fade-in     { animation: fadeIn     0.3s ease-out forwards; }
+          .animate-slide-in    { animation: slideIn    0.3s ease-out forwards; }
+          .animate-dropdown-in { animation: dropdownIn 0.15s ease-out forwards; }
+          .shadow-transition   { transition: box-shadow 0.3s ease; }
+          .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+          .hide-scrollbar::-webkit-scrollbar { display: none; }
+          .slim-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(156,163,175,0.4) transparent; }
+          .slim-scrollbar::-webkit-scrollbar { width: 4px; }
+          .slim-scrollbar::-webkit-scrollbar-track { background: transparent; }
+          .slim-scrollbar::-webkit-scrollbar-thumb { background: rgba(156,163,175,0.4); border-radius: 2px; }
+          .slim-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(156,163,175,0.6); }
+        `}</style>
 
       <div className="relative min-h-[calc(100vh-75px)] md:min-h-[calc(100vh-100px)] sm:min-h-[calc(100vh-100px)] flex grow">
 
@@ -469,7 +654,7 @@ const UserBot = () => {
                       {messages.map((msg) => (
                         <div
                           key={msg.id}
-                          className={`flex items-start gap-2 animate-fade-in ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                          className={`flex items-start gap-2 animate-fade-in min-w-0 w-full ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                           style={{ alignItems: 'center' }}
                         >
                           {msg.sender === 'bot' && (
@@ -477,15 +662,40 @@ const UserBot = () => {
                               <Bot size={16} className={darkMode ? 'text-green-400' : 'text-green-600'} />
                             </div>
                           )}
-                          <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                            ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                            : darkMode
-                              ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                              : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
-                            <div
-                              className="text-sm leading-relaxed message-content"
-                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.text || '') }}
-                            />
+                          <div className="flex flex-col gap-1 max-w-[70%] min-w-0">
+                            <div className={`w-fit break-words rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
+                              ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                              : darkMode
+                                ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                                : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
+                              <div
+                                className="text-sm leading-relaxed message-content"
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.text || '') }}
+                              />
+                              {msg.sender === 'bot' && !streamingId && (
+                                <button
+                                  onClick={() => handleSpeak(msg.text.replace(/<[^>]*>?/gm, ''), msg.id)}
+                                  className={`absolute -bottom-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center shadow-sm transition-all hover:scale-110 ${speakingMessageId === msg.id
+                                    ? darkMode ? 'bg-orange-600 text-white' : 'bg-orange-500 text-white'
+                                    : darkMode ? 'bg-gray-600 text-gray-300 hover:bg-gray-500' : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'
+                                    }`}
+                                  title={speakingMessageId === msg.id ? (language === 'urdu' ? 'روکیں' : 'Stop') : (language === 'urdu' ? 'پڑھنے کے لیے کلک کریں' : 'Read aloud')}
+                                >
+                                  <Volume2 size={11} />
+                                </button>
+                              )}
+                            </div>
+                            {/* {msg.sender === 'bot' && (
+                                <button
+                                  onClick={() => handleSpeak(msg.text.replace(/<[^>]*>?/gm, ''))}
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 ${isSpeaking
+                                    ? darkMode ? 'bg-orange-600 text-white' : 'bg-orange-500 text-white'
+                                    : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-300 text-gray-700 hover:bg-gray-400'}`}
+                                  title={language === 'urdu' ? 'پڑھنے کے لیے کلک کریں' : 'Click to read'}
+                                >
+                                  <Volume2 size={14} />
+                                </button>
+                              )} */}
                           </div>
                           {msg.sender === 'user' && (
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-blue-900' : 'bg-blue-100'}`}>
@@ -565,8 +775,12 @@ const UserBot = () => {
                             <Plus size={18} />
                           </button>
                           <button
-                            className="p-1.5 transition-all duration-200 text-green-600 hover:text-green-700 transform hover:scale-110"
+                            onClick={handleStartListening}
+                            className={`p-1.5 transition-all duration-200 transform hover:scale-110 ${isListening
+                              ? 'text-red-600 hover:text-red-700 animate-pulse'
+                              : 'text-green-600 hover:text-green-700'}`}
                             aria-label="Voice input"
+                            title={isListening ? (language === 'urdu' ? 'سننا بند کریں' : 'Stop listening') : (language === 'urdu' ? 'سنیں' : 'Listen')}
                           >
                             <Mic size={18} />
                           </button>
@@ -632,15 +846,28 @@ const UserBot = () => {
                         <Bot size={16} className={darkMode ? 'text-green-400' : 'text-green-600'} />
                       </div>
                     )}
-                    <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
-                      ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
-                      : darkMode
-                        ? 'bg-gray-700 text-gray-200 rounded-bl-none'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
-                      <div
-                        className="text-sm leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.text || '') }}
-                      />
+                    <div className="flex flex-col gap-1">
+                      <div className={`max-w-[70%] rounded-2xl px-4 py-3 animate-message-in ${msg.sender === 'user'
+                        ? 'rounded-br-none bg-gradient-to-r from-green-600 to-green-500 text-white'
+                        : darkMode
+                          ? 'bg-gray-700 text-gray-200 rounded-bl-none'
+                          : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
+                        <div
+                          className="text-sm leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.text || '') }}
+                        />
+                      </div>
+                      {msg.sender === 'bot' && !streamingId && (
+                        <button
+                          onClick={() => handleSpeak(msg.text.replace(/<[^>]*>?/gm, ''), msg.id)}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 ${speakingMessageId === msg.id
+                            ? darkMode ? 'bg-orange-600 text-white' : 'bg-orange-500 text-white'
+                            : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-300 text-gray-700 hover:bg-gray-400'}`}
+                          title={speakingMessageId === msg.id ? (language === 'urdu' ? 'روکیں' : 'Stop') : (language === 'urdu' ? 'پڑھنے کے لیے کلک کریں' : 'Click to read')}
+                        >
+                          <Volume2 size={14} />
+                        </button>
+                      )}
                     </div>
                     {msg.sender === 'user' && (
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${darkMode ? 'bg-blue-900' : 'bg-blue-100'}`}>
@@ -720,8 +947,12 @@ const UserBot = () => {
                       <Plus size={18} />
                     </button>
                     <button
-                      className="p-1.5 transition-all duration-200 text-green-600 hover:text-green-700 transform hover:scale-110"
+                      onClick={handleStartListening}
+                      className={`p-1.5 transition-all duration-200 transform hover:scale-110 ${isListening
+                        ? 'text-red-600 hover:text-red-700 animate-pulse'
+                        : 'text-green-600 hover:text-green-700'}`}
                       aria-label="Voice input"
+                      title={isListening ? (language === 'urdu' ? 'سننا بند کریں' : 'Stop listening') : (language === 'urdu' ? 'سنیں' : 'Listen')}
                     >
                       <Mic size={18} />
                     </button>
