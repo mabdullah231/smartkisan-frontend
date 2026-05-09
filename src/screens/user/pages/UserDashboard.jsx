@@ -1,14 +1,16 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { Cloud, Leaf, Wind, Info, Plus, Mic, ArrowRight } from "lucide-react";
+import { Cloud, Leaf, Wind, Info } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Helpers from "../../../config/Helpers";
 import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
+import ChatInputBar from "../../../components/ChatInputBar";
 import axios from "axios";
 
 const UserDashboard = () => {
   const authUser = Helpers.getAuthUser();
   const darkMode = useContext(DarkModeContext);
   const language = useContext(LanguageContext);
-  const [message, setMessage] = useState("");
+  const navigate = useNavigate();
   const [location, setLocation] = useState(null);
   const [weatherData, setWeatherData] = useState(null);
   const [soilInfo, setSoilInfo] = useState({
@@ -372,69 +374,22 @@ const UserDashboard = () => {
       {/* Chatbot Interface - Fixed at bottom, centered within dashboard content */}
       <div className="fixed bottom-4 z-50 lg:left-[225px] lg:right-0 left-0 right-0 px-2 sm:px-4">
         <div className="max-w-4xl mx-auto">
-          <div
-            className={`w-full rounded-4xl px-4 py-3 flex items-center gap-3 shadow-lg transition-all duration-300 ${
-              darkMode
-                ? "bg-gray-800 border border-gray-700"
-                : "bg-gradient-to-r from-gray-150 to-gray-150 border border-gray-300"
-            }`}
-          >
-            {/* Left Side - Action Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                className="p-2 transition-colors duration-200 text-green-600 hover:text-green-700"
-                aria-label="Add attachment"
-              >
-                <Plus size={20} />
-              </button>
-              <button
-                className="p-2 transition-colors duration-200 text-green-600 hover:text-green-700"
-                aria-label="Voice input"
-              >
-                <Mic size={20} />
-              </button>
-            </div>
-
-            {/* Text Input Area */}
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Ask me anything..."
-              className={`flex-1 px-4 py-2 rounded-2xl border-0 outline-none text-sm transition-colors duration-300 ${
-                darkMode
-                  ? "bg-gray-700 text-gray-200 placeholder-gray-400"
-                  : "bg-transparent text-gray-800 placeholder-gray-500"
-              }`}
-              onKeyPress={(e) => {
-                if (e.key === "Enter" && message.trim()) {
-                  // Handle send message
-                  console.log("Sending:", message);
-                  setMessage("");
-                }
-              }}
-            />
-
-            {/* Right Side - Send Button */}
-            <button
-              onClick={() => {
-                if (message.trim()) {
-                  // Handle send message
-                  console.log("Sending:", message);
-                  setMessage("");
-                }
-              }}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                message.trim()
-                  ? "bg-green-600 text-white hover:bg-green-700 shadow-sm"
-                  : "bg-green-600 text-white opacity-50 cursor-not-allowed"
-              }`}
-              disabled={!message.trim()}
-              aria-label="Send message"
-            >
-              <ArrowRight size={20} />
-            </button>
-          </div>
+          <ChatInputBar
+            onSendMessage={(message, attachments) => {
+              // Build attachment context
+              const attachmentContext = attachments.map((a) => a.data).join(" ");
+              const fullQuestion = [message.trim(), attachmentContext].filter(Boolean).join("\n");
+              
+              // Store in sessionStorage for UserBot to retrieve and auto-send
+              sessionStorage.setItem('dashboardMessage', fullQuestion);
+              sessionStorage.setItem('autoSendMessage', 'true');
+              
+              // Navigate to UserBot
+              navigate('/user/bot');
+            }}
+            isNavigating={true}
+            showMicButton={true}
+          />
         </div>
       </div>
     </div>

@@ -35,6 +35,7 @@ const UserBot = () => {
   const chatContainerRef = useRef(null);
   const chatContainerRefMobile = useRef(null);
   const recentChatsRef = useRef(null);
+  const shouldAutoSendRef = useRef(false);
 
 // ─── WAV encoder helper ───────────────────────────────────────────────────────
   const audioBufferToWav = (buffer) => {
@@ -187,6 +188,11 @@ const UserBot = () => {
       const containsUrdu = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
       const voiceLang = containsUrdu ? "ur-PK" : "en-US";
 
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found. Please login again.');
+      }
+
       const response = await axios.post(
         `${Helpers.apiUrl}azure/tts`,
         {
@@ -194,7 +200,10 @@ const UserBot = () => {
           language: voiceLang
         },
         {
-          headers: Helpers.getAuthHeaders().headers,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
           responseType: 'blob'
         }
       );
@@ -220,9 +229,11 @@ const UserBot = () => {
       await audioRef.current.play();
 
     } catch (error) {
-      console.error("TTS Error:", error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Unknown error';
+      const statusCode = error.response?.status || 'N/A';
+      console.error(`[TTS Error] Status: ${statusCode} | Message: ${errorMsg}`, error);
       setSpeakingMessageId(null);
-      Helpers.toast("error", language === "urdu" ? "ٹیکسٹ ٹو اسپیچ میں خرابی" : "Text-to-speech error");
+      Helpers.toast("error", language === "urdu" ? `ٹیکسٹ ٹو اسپیچ میں خرابی: ${errorMsg}` : `Text-to-speech error: ${errorMsg}`);
     }
   };
 
@@ -439,7 +450,35 @@ const UserBot = () => {
       setMessages([]);
       setChatId(null);
     }
+
+    // Check if there's a message from UserDashboard
+    const dashboardMessage = sessionStorage.getItem('dashboardMessage');
+    const autoSendFlag = sessionStorage.getItem('autoSendMessage');
+    
+    if (dashboardMessage && !message && attachments.length === 0) {
+      setMessage(dashboardMessage);
+      shouldAutoSendRef.current = !!autoSendFlag;
+      
+      // Clean up sessionStorage
+      sessionStorage.removeItem('dashboardMessage');
+      if (autoSendFlag) {
+        sessionStorage.removeItem('autoSendMessage');
+      }
+    }
   }, [paramChatId]);
+
+  // Auto-send message when it arrives from UserDashboard
+  useEffect(() => {
+    if (shouldAutoSendRef.current && message.trim() && !isLoading) {
+      shouldAutoSendRef.current = false;
+      
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        handleSendMessage();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [message, isLoading]);
 
   const loadChatById = async (id) => {
     try {
