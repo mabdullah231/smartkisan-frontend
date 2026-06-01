@@ -386,7 +386,8 @@ const UserBot = () => {
           question: fullQuestion,
           history: messages
             .slice(-6)
-            .map(m => ({ role: m.sender, content: m.text }))
+            .map(m => ({ role: m.sender, content: m.text })),
+          crop_growth_stage: (Helpers.getAuthUser() || {}).crop_growth_stage || null
         })
       });
 
@@ -565,6 +566,22 @@ const UserBot = () => {
   useEffect(() => {
     getRecentChats();
   }, []);
+
+  // Auto-add crop growth stage as an attachment (so it's included in the prompt like weather/soil)
+  useEffect(() => {
+    const auth = Helpers.getAuthUser();
+    if (!auth || !auth.crop_growth_stage) return;
+
+    setAttachments((prev) => {
+      if (prev.some(a => a.type === 'growth')) return prev;
+      const stageVal = auth.crop_growth_stage;
+      const label = language === 'urdu' ? `مرحلہ: ${stageVal}` : `Growth: ${stageVal}`;
+      const contextData = language === 'urdu'
+        ? `[فصل کا مرحلہ: ${stageVal}]`
+        : `[Growth Stage: ${stageVal}]`;
+      return [...prev, { id: `growth-${Date.now()}`, type: 'growth', label, data: contextData }];
+    });
+  }, [language]);
 
   // ─── Badge helpers (plain functions, not components) ─────────────────────────
 

@@ -14,6 +14,12 @@ const UserSettings = () => {
   // Tab state: 'details' or 'iot'
   const [activeTab, setActiveTab] = useState("details");
 
+  // Farm details state
+  const [farmSize, setFarmSize] = useState("");
+  const [cropType, setCropType] = useState("Wheat");
+  const [cropStage, setCropStage] = useState("Germination");
+  const [savingFarmDetails, setSavingFarmDetails] = useState(false);
+
   // Profile form state
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -57,7 +63,7 @@ const UserSettings = () => {
         Helpers.getAuthHeaders()
       );
       if (response.data.success) {
-        const { full_name, phone, iot_url, farm_latitude, farm_longitude } = response.data.data;
+        const { full_name, phone, iot_url, farm_latitude, farm_longitude, farm_size, crop_type, crop_growth_stage } = response.data.data;
         setProfileForm({
           name: full_name || "",
           phone: phone || "",
@@ -69,7 +75,10 @@ const UserSettings = () => {
         setFarmLongitude(
           farm_longitude != null && farm_longitude !== "" ? Number(farm_longitude) : null
         );
-        // Update localStorage as well
+        setFarmSize(farm_size ?? "");
+        setCropType(crop_type ?? "Wheat");
+        setCropStage(crop_growth_stage ?? "Germination");
+        // Update localStorage `user` object as well
         const updatedUser = {
           ...authUser,
           name: full_name,
@@ -77,8 +86,11 @@ const UserSettings = () => {
           iot_url,
           farm_latitude: farm_latitude ?? null,
           farm_longitude: farm_longitude ?? null,
+          farm_size: farm_size ?? null,
+          crop_type: crop_type ?? null,
+          crop_growth_stage: crop_growth_stage ?? null,
         };
-        localStorage.setItem("authUser", JSON.stringify(updatedUser));
+        Helpers.setItem("user", updatedUser, true);
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
@@ -209,7 +221,7 @@ const UserSettings = () => {
               farm_latitude: lat,
               farm_longitude: lon,
             };
-            localStorage.setItem("authUser", JSON.stringify(updatedUser));
+            Helpers.setItem("user", updatedUser, true);
             Helpers.toast(
               "success",
               language === "urdu"
@@ -259,7 +271,7 @@ const UserSettings = () => {
 
       if (response.data.success) {
         const updatedUser = { ...authUser, iot_url: iotUrl };
-        localStorage.setItem("authUser", JSON.stringify(updatedUser));
+        Helpers.setItem("user", updatedUser, true);
         Helpers.toast("success", language === "urdu" ? "IoT ڈیوائس یو آر ایل محفوظ ہو گیا" : "IoT device URL saved successfully");
       }
     } catch (error) {
@@ -303,6 +315,13 @@ const UserSettings = () => {
         >
           <User size={18} />
           <span>{language === "urdu" ? "ذاتی معلومات" : "User Details"}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("farm")}
+          className={tabButtonClass("farm")}
+        >
+          <MapPin size={18} />
+          <span>{language === "urdu" ? "فارم کی تفصیلات" : "Farm Details"}</span>
         </button>
         <button
           onClick={() => setActiveTab("iot")}
@@ -436,6 +455,137 @@ const UserSettings = () => {
                 </div>
               </div>
             </div>
+            </div>
+          </div>
+        )}
+        {/* Farm Details Tab */}
+        {activeTab === "farm" && (
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left column: Land size & Crop Type */}
+              <div className={`rounded-lg p-5 ${darkMode ? "bg-gray-700/50" : "bg-gray-50"}`}>
+                <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? "text-gray-200" : "text-gray-800"}`}>
+                  <MapPin size={20} />
+                  {language === "urdu" ? "فارم کی تفصیلات" : "Farm Details"}
+                </h2>
+
+                <div className="space-y-4">
+                  <TextInput
+                    label={language === "urdu" ? "زمین کا سائز (ایکڑ)" : "Land Size (acres)"}
+                    placeholder={language === "urdu" ? "مثال: 2.5" : "e.g. 2.5"}
+                    value={farmSize}
+                    onChange={(e) => setFarmSize(e.target.value)}
+                    darkMode={darkMode}
+                  />
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{language === "urdu" ? "فصل کی قسم" : "Crop Type"}</label>
+                    <select
+                      value={cropType}
+                      onChange={(e) => setCropType(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="Wheat">{language === "urdu" ? "گندم" : "Wheat"}</option>
+                      <option value="Rice">{language === "urdu" ? "چاول" : "Rice"}</option>
+                      <option value="Maize">{language === "urdu" ? "مکئی" : "Maize"}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right column: Crop stage & Farm location */}
+              <div className={`rounded-lg p-5 ${darkMode ? "bg-gray-700/50" : "bg-gray-50"}`}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{language === "urdu" ? "پودے کا مرحلہ" : "Crop Growth Stage"}</label>
+                    <select
+                      value={cropStage}
+                      onChange={(e) => setCropStage(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="Germination">Germination — جرمنیٹیشن</option>
+                      <option value="Tillering">Tillering — ٹِلرنگ</option>
+                      <option value="Jointing">Jointing — جوائنٹنگ</option>
+                      <option value="Booting">Booting — بوٹنگ</option>
+                      <option value="Heading/Flowering">Heading/Flowering — ہیڈنگ/فلَوَرِنگ</option>
+                      <option value="Grain Filling">Grain Filling — گرین فلِنگ</option>
+                      <option value="Harvest">Harvest — فصل کٹائی</option>
+                    </select>
+                  </div>
+
+                  <div className="rounded-lg p-0 bg-transparent">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{language === "urdu" ? "فارم کا مقام" : "Farm location"}</label>
+                    <TextInput
+                      label={language === "urdu" ? "عرض بلد، طول بلد" : "Latitude, longitude"}
+                      placeholder={language === "urdu" ? "ابھی تک کوئی مقام محفوظ نہیں" : "No location saved yet"}
+                      value={farmLocationDisplay}
+                      onChange={() => {}}
+                      darkMode={darkMode}
+                      readOnly
+                    />
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={handleCaptureFarmLocation}
+                        disabled={capturingFarmLocation}
+                        className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${capturingFarmLocation ? "bg-green-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"} text-white shadow-sm`}
+                      >
+                        <MapPin size={18} />
+                        {capturingFarmLocation
+                          ? language === "urdu"
+                            ? "مقام لیا جا رہا ہے..."
+                            : "Getting location..."
+                          : language === "urdu"
+                          ? "فارم کا مقام شامل کریں"
+                          : "Add farm location"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Save button below the two columns */}
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={async () => {
+                  setSavingFarmDetails(true);
+                  try {
+                    const payload = {
+                      type: "farm_details",
+                      farm_size: farmSize ? parseFloat(farmSize) : null,
+                      crop_type: cropType,
+                      crop_growth_stage: cropStage,
+                    };
+                    const res = await axios.post(`${Helpers.apiUrl}settings/user/settings`, payload, Helpers.getAuthHeaders());
+                    if (res.data.success) {
+                      Helpers.toast("success", language === "urdu" ? "فارم کی تفصیلات محفوظ ہو گئیں" : "Farm details saved successfully");
+                      try {
+                        const current = Helpers.getAuthUser() || {};
+                        const updatedUser = {
+                          ...current,
+                          farm_size: (res.data.farm_size !== undefined) ? res.data.farm_size : (payload.farm_size ?? current.farm_size),
+                          crop_type: (res.data.crop_type !== undefined) ? res.data.crop_type : (payload.crop_type ?? current.crop_type),
+                          crop_growth_stage: (res.data.crop_growth_stage !== undefined) ? res.data.crop_growth_stage : (payload.crop_growth_stage ?? current.crop_growth_stage),
+                        };
+                        localStorage.setItem("authUser", JSON.stringify(updatedUser));
+                      } catch (e) {
+                        // ignore localStorage errors
+                      }
+                    }
+                  } catch (e) {
+                    console.error("Error saving farm details:", e);
+                    Helpers.toast("error", e.response?.data?.detail || (language === "urdu" ? "محفوظ کرنے میں ناکامی" : "Failed to save farm details"));
+                  } finally {
+                    setSavingFarmDetails(false);
+                  }
+                }}
+                disabled={savingFarmDetails}
+                className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${savingFarmDetails ? "bg-green-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"} text-white shadow-sm`}
+              >
+                <Save size={18} />
+                {savingFarmDetails ? (language === "urdu" ? "محفوظ ہو رہا ہے..." : "Saving...") : (language === "urdu" ? "تفصیلات محفوظ کریں" : "Save Details")}
+              </button>
             </div>
           </div>
         )}

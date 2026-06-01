@@ -218,7 +218,11 @@ const DashboardLayout = () => {
 
 
                     </ul>
+                    
                   </nav>
+                  { userRole == "user" && (
+                  <a href="mailto:ak399155@gmail.com"><h4 className=" text-center uppercase px-4 py-1 bg-gray-200 rounded-lg w-[80%] hover:bg-gray-500 hover:text-white transition duration-150 cursor-pointer">Contact Us</h4></a>
+                  )}
                 </div>
               </div>
             </div>

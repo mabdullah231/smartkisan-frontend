@@ -4,6 +4,7 @@ import { ArrowRight, ArrowLeft } from "lucide-react";
 import axios from "axios";
 import OTPInput from "../../components/common/form-fields/OTPInput";
 import Dropdown from "../../components/common/form-fields/Dropdown";
+import TextInput from "../../components/common/form-fields/TextInput";
 import Helpers from "../../config/Helpers";
 import { ROLE_PREFIXES } from "../routes";
 
@@ -22,6 +23,7 @@ const Register = () => {
     otp: "",
     landSize: "",
     cropType: "Wheat",
+    cropStage: "Germination",
   });
 
   const [isComplete, setIsComplete] = useState(false);
@@ -226,19 +228,40 @@ const Register = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.landSize || !formData.cropType) {
-      Helpers.toast("error", "Land size and crop type are required.");
-      return;
-    }
-
-    // For now, we'll just complete the registration since account is already created and verified
-    // Land details can be saved later via profile update or a separate endpoint
+    // farm size can be null; crop type defaults to Wheat. We'll send whatever user selected.
     setIsLoading(true);
     try {
-      // Registration is already complete after OTP verification
-      // You can add an API call here to save land details if backend has such endpoint
-      Helpers.toast("success", "Registration completed successfully!");
-      setIsComplete(true);
+      let farmSizeVal = formData.landSize ? parseFloat(formData.landSize) : null;
+      if (farmSizeVal !== null && isNaN(farmSizeVal)) farmSizeVal = null;
+
+      const payload = {
+        farm_size: farmSizeVal,
+        crop_type: formData.cropType,
+        crop_growth_stage: formData.cropStage,
+      };
+
+      const response = await axios.post(`${Helpers.apiUrl}update-profile`, {
+        farm_size: payload.farm_size,
+        crop_type: payload.crop_type,
+        crop_growth_stage: payload.crop_growth_stage,
+      }, Helpers.getAuthHeaders());
+
+      if (response.data.success) {
+        Helpers.toast("success", response.data.detail || "Registration completed successfully!");
+        // Update local stored user info
+        try {
+          const storedUser = Helpers.getItem("user", true) || {};
+          storedUser.farm_size = response.data.data.farm_size ?? storedUser.farm_size;
+          storedUser.crop_type = response.data.data.crop_type ?? storedUser.crop_type;
+          storedUser.crop_growth_stage = response.data.data.crop_growth_stage ?? storedUser.crop_growth_stage;
+          Helpers.setItem("user", storedUser, true);
+        } catch (e) {
+          // ignore local storage update errors
+        }
+        setIsComplete(true);
+      } else {
+        Helpers.toast("error", "Failed to save land details.");
+      }
     } catch (error) {
       const errorMessage =
         error.response?.data?.detail ||
@@ -518,6 +541,23 @@ const Register = () => {
                       onChange={handleChange}
                       options={[
                         { value: "Wheat", label: "Wheat" }
+                      ]}
+                    />
+
+                    {/* Crop Growth Stage Dropdown */}
+                    <Dropdown
+                      label="Crop Growth Stage"
+                      name="cropStage"
+                      value={formData.cropStage}
+                      onChange={handleChange}
+                      options={[
+                        { value: "Germination", label: "Germination — جرمنیٹیشن" },
+                        { value: "Tillering", label: "Tillering — ٹِلرنگ" },
+                        { value: "Jointing", label: "Jointing — جوائنٹنگ" },
+                        { value: "Booting", label: "Booting — بوٹنگ" },
+                        { value: "Heading/Flowering", label: "Heading/Flowering — ہیڈنگ/فلَوَرِنگ" },
+                        { value: "Grain Filling", label: "Grain Filling — گرین فلِنگ" },
+                        { value: "Harvest", label: "Harvest — فصل کٹائی" },
                       ]}
                     />
                   </>
