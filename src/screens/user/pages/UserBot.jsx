@@ -2,6 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { Plus, Mic, ArrowRight, Bot, User, ChevronDown, MessageSquare, X, Cloud, Droplets, Image, Volume2 } from "lucide-react";
 import Helpers from "../../../config/Helpers";
 import { DarkModeContext, LanguageContext } from "../../DashboardLayout";
+import ImageClassificationModal from "../../../components/ImageClassificationModal";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import DOMPurify from 'dompurify';
@@ -25,6 +26,12 @@ const UserBot = () => {
   const [isListening, setIsListening] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState(null);
   const [streamingId, setStreamingId] = useState(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [classificationResult, setClassificationResult] = useState(null);
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [imageError, setImageError] = useState(null);
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -323,18 +330,98 @@ const UserBot = () => {
 
   const handleAddPicture = () => {
     setShowPlusOptions(false);
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const label = file.name.length > 20 ? file.name.slice(0, 18) + "…" : file.name;
-        const contextData = language === "urdu" ? `[تصویر: ${file.name}]` : `[Image: ${file.name}]`;
-        setAttachments((prev) => [...prev, { id: `img-${Date.now()}`, type: "image", label, data: contextData, file }]);
+    resetImageModal();
+    setShowImageModal(true);
+  };
+
+  const resetImageModal = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setSelectedImage(null);
+    setImagePreviewUrl(null);
+    setClassificationResult(null);
+    setImageError(null);
+    setIsClassifying(false);
+  };
+
+  const handleCloseImageModal = () => {
+    setShowImageModal(false);
+    resetImageModal();
+  };
+
+  const handleImageFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      Helpers.toast("error", language === "urdu" ? "براہ کرم ایک تصویر منتخب کریں" : "Please select an image file");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setSelectedImage(file);
+    setImagePreviewUrl(previewUrl);
+    setClassificationResult(null);
+    setImageError(null);
+    await classifyImage(file);
+  };
+
+  const classifyImage = async (file) => {
+    setIsClassifying(true);
+    setImageError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await axios.post(
+        `${Helpers.apiUrl}classify-wheat-image`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        setClassificationResult({
+          label: response.data.label,
+          accuracy: response.data.accuracy,
+        });
+      } else {
+        setImageError(language === "urdu" ? "تصویر کی درجہ بندی ناکام" : "Image classification failed");
       }
-    };
-    input.click();
+    } catch (error) {
+      console.error("Image classification error:", error);
+      const detail = error.response?.data?.detail;
+      setImageError(detail || (language === "urdu" ? "تصویر کی درجہ بندی ناکام" : "Image classification failed"));
+    } finally {
+      setIsClassifying(false);
+    }
+  };
+
+  const handleClearImage = () => {
+    resetImageModal();
+  };
+
+  const handleAddClassificationToChat = () => {
+    if (!classificationResult) return;
+
+    const label = language === "urdu"
+      ? `بیماری: ${classificationResult.label} (${classificationResult.accuracy}%)`
+      : `Disease: ${classificationResult.label} (${classificationResult.accuracy}%)`;
+    const contextData = language === "urdu"
+      ? `[گندم کی بیماری: ${classificationResult.label}, درستگی: ${classificationResult.accuracy}%]`
+      : `[Wheat Disease: ${classificationResult.label}, Accuracy: ${classificationResult.accuracy}%]`;
+
+    setAttachments((prev) => [...prev, {
+      id: `disease-${Date.now()}`,
+      type: "disease",
+      label,
+      data: contextData
+    }]);
+    
+    setShowImageModal(false);
   };
 
   // ─── Send message ─────────────────────────────────────────────────────────────
@@ -1086,6 +1173,21 @@ const UserBot = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {showImageModal && (
+          <ImageClassificationModal
+            isOpen={showImageModal}
+            onClose={handleCloseImageModal}
+            selectedImage={selectedImage}
+            imagePreviewUrl={imagePreviewUrl}
+            classificationResult={classificationResult}
+            isClassifying={isClassifying}
+            imageError={imageError}
+            onImageFileChange={handleImageFileChange}
+            onClearImage={handleClearImage}
+            onAddToChat={handleAddClassificationToChat}
+          />
         )}
 
       </div>
